@@ -1,0 +1,64 @@
+\documentclass[12pt]{article}
+\usepackage{graphicx, amsmath, amssymb, bm, url, mathtools, natbib, amsthm}
+
+\bibpunct{(}{)}{;}{a}{,}{,}
+
+% The following package allows for doublespacing
+\usepackage{setspace}
+
+\newcommand{\xbar}{\bar{\bm x}}
+\newcommand{\tr}{\text{tr}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\pagestyle{plain}
+%----------------Page dimensions ----------------
+\oddsidemargin 0.0in
+\evensidemargin 0.0in
+\topmargin -0.75in
+\leftmargin 0in
+\headheight 0.0in
+\headsep 0.5in
+%\footheight 0.0in
+\footskip 0.5in
+\footnotesep 0.0in
+\textwidth 6.5in
+\textheight 9.5in
+%-----------Define Pictures---------------------
+\def\picture #1 by #2 (#3){
+ \vbox to #2{
+   \hrule width #1 height 0pt depth 0pt
+   \vfill
+   \special{picture #3} % this is the low-level interface
+   }
+ }
+\def\scaledpicture #1 by #2 (#3 scaled #4){{
+ \dimen0=#1 \dimen1=#2
+ \divide\dimen0 by 1000 \multiply\dimen0 by #4
+ \divide\dimen1 by 1000 \multiply\dimen1 by #4
+ \picture \dimen0 by \dimen1 (#3 scaled #4)}
+ }
+
+\newtheorem{thm}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{cor}{Corollary}
+\newtheorem{result}{Result}
+
+\begin{document}
+
+\title{Automated Flow Cytometry Data Analysis Pipeline with OpenCyto}
+\author{John Ramey, Greg Finak, Mike Jiang, Raphael Gottardo, Jafar Taghiyar,\\ Nima Aghaeepour, and Ryan Brinkman}
+
+\maketitle
+
+\doublespacing
+
+\begin{abstract}
+TODO
+\end{abstract}
+
+\section{Introduction}
+
+\section{Discussion}
+
+\end{document}

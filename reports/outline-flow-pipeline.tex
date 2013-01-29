@@ -1,0 +1,118 @@
+\documentclass[12pt]{article}
+\usepackage{graphicx, amsmath, amssymb, bm, url, mathtools, natbib, amsthm}
+
+\bibpunct{(}{)}{;}{a}{,}{,}
+
+% The following package allows for doublespacing
+\usepackage{setspace}
+
+\newcommand{\xbar}{\bar{\bm x}}
+\newcommand{\tr}{\text{tr}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\pagestyle{plain}
+%----------------Page dimensions ----------------
+\oddsidemargin 0.0in
+\evensidemargin 0.0in
+\topmargin -0.75in
+\leftmargin 0in
+\headheight 0.0in
+\headsep 0.5in
+%\footheight 0.0in
+\footskip 0.5in
+\footnotesep 0.0in
+\textwidth 6.5in
+\textheight 9.5in
+%-----------Define Pictures---------------------
+\def\picture #1 by #2 (#3){
+ \vbox to #2{
+   \hrule width #1 height 0pt depth 0pt
+   \vfill
+   \special{picture #3} % this is the low-level interface
+   }
+ }
+\def\scaledpicture #1 by #2 (#3 scaled #4){{
+ \dimen0=#1 \dimen1=#2
+ \divide\dimen0 by 1000 \multiply\dimen0 by #4
+ \divide\dimen1 by 1000 \multiply\dimen1 by #4
+ \picture \dimen0 by \dimen1 (#3 scaled #4)}
+ }
+
+\renewcommand{\labelitemi}{-}
+
+\begin{document}
+
+\title{Outline -- Automated Flow Cytometry Data Analysis Pipeline with OpenCyto}
+\author{John Ramey, Greg Finak, Mike Jiang, Raphael Gottardo, Jafar Taghiyar,\\ Nima Aghaeepour, and Ryan Brinkman}
+
+\maketitle
+
+\doublespacing
+
+\begin{enumerate}
+	\item Hypothesis: Automated gating can perform as well or better than manual gating to identify responding T-cell
+subpopulations in vaccine clinical trial data.
+	\item Introduction
+		\begin{itemize}
+			\item Goal: Use separation of meaningful cell subpopulations identified via automated gating (pre- and post-vaccination) to identify subjects with a vaccine response.
+			\item We use two intracellular cytokine staining (ICS) data sets produced by the HIV Vaccine Trials Network (HVTN).
+			\item Emphasize the pitfalls of manual gating; automation is preferred. Manual gating is time-consuming, and may be subjective if experiments are not well controlled.
+			\item OpenCyto yields accurate reproduction of manual gating schemes in an automated manner
+			\item OpenCyto incorporates prior knowledge through a Bayesian framework.
+			\item OpenCyto attains fast, robust, accurate gating of rare cell populations
+		\end{itemize}
+	\item OpenCyto
+	\begin{itemize}
+		\item Discuss infrastructure 
+		\item Describe the data-analysis pipeline
+		\item Describe the different gating approaches
+		\item Emphasize that gating is data-driven and can incorporate expert opinion as well as marker-specific, data-driven priors
+		\item Gating is performed in one and two dimensions, so that the gating results are easy to understand
+		\item Gates are data-derived for each sample using hierarchical gating
+		\item Show that OpenCyto can be used to replicate manual gating with respect to low variability and bias compared to the 
+manual gating statistics.
+	\end{itemize}
+	\item Classification
+	\begin{itemize}
+		\item Show that we can improve discrimination by using more features and optimizing the gating, and making this a
+classification problem (when baseline is available).
+		\item Rapidly prototype different gating thresholds for the cytokines (i.e., you could design the pipeline for the ENV stimulation and run it on the GAG stimulation for each data set to show that it is robust when data is standardized)
+		\item Describe how our classifier is constructed
+		\begin{itemize}
+			\item We extract all Boolean subsets with associated proportions as features
+			\item Briefly provide example Boolean subset, similar to FlowCAP 3 talk: (CD4) IL2+ and !IFNg+ and TNFa+
+			\item We then utilize a LASSO-based classifier using the {\tt glmnet} R package
+			\item Mention briefly that the shrinkage parameter selected via cross-validation
+			\item Mention also that {\tt glmnet} employs a variable selection via $L_1$ regularization
+		\end{itemize}
+	\end{itemize}
+	\item Discuss data sets and results
+		\begin{itemize}
+		\item Data sets
+		\begin{itemize}
+			\item Data set \#1: HVTN 065
+			\item Data set \#2: HVTN 080
+		\end{itemize}
+		\item Results
+		\begin{itemize}
+			\item Emphasize that OpenCyto yields similar results to the manual gating
+			\item Discuss the features selected by {\tt glmnet}
+			\item Figures:
+			\begin{itemize}
+				\item Figure 1: Output from flowClust that demonstrates the fitted mixture model
+				\item Figure 2: Comparison of automated and manual gates
+				\item Figure 3: Gated proportions of stimulation groups by features selected for each training subject
+				\item Figure 4: Comparison of manual gating and automated gating statistics. (show CVs)
+			\end{itemize}
+			\item Tables:
+			\begin{itemize}
+				\item Table 1: Response rates by treatment group for each data set (manual and automated).
+			\end{itemize}
+		\end{itemize}
+		\end{itemize}
+	\item Discussion
+	
+\end{enumerate}
+
+\end{document}
