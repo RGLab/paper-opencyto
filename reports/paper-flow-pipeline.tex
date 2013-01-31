@@ -46,19 +46,26 @@
 
 \begin{document}
 
-\title{Automated Flow Cytometry Data Analysis Pipeline with OpenCyto}
-\author{John Ramey, Greg Finak, Mike Jiang, Raphael Gottardo, Jafar Taghiyar,\\ Nima Aghaeepour, and Ryan Brinkman}
+\title{Automated Flow Cytometry Data Analysis with the OpenCyto Framework}
+\author{John Ramey, Greg Finak, Mike Jiang, Jafar Taghiyar, Stephen de Rosa,\\ Ryan Brinkman, and Raphael Gottardo}
 
 \maketitle
 
 \doublespacing
 
-\begin{abstract}
-TODO
-\end{abstract}
+\maketitle
+
+\doublespacing
 
 \section{Introduction}
 
-\section{Discussion}
+Advancements in flow cytometry (FCM) technologies and instrumentation have enabled rapid quantification of multidimensional attributes for millions of individual cells to identify meaningful cellular subpopulations and to assess cellular heterogeneity. However, the analysis of the resulting large, high-dimensional data sets typically involves a time-consuming sequential manual gating strategy that is inherently subjective as the gating depends on the individual performing the gating. This subjectivity can yield highly variable gate placement from person to person if an experiment is not well-controlled or if a marker is not well-resolved as there may be ambiguity as to where a cell-population boundary should be placed. Alternatively, automated, data-driven pipelines are necessary to expedite the gating of FCM data and to remove the subjectivity intrinsic to manual gating. This is particularly important in clinical trials where assays must be extremely well controlled in order to generate data that is comparable over time.
+
+We have developed the OpenCyto framework, a collection of well-integrated open-source R packages that delivers robust, reproducible, and data-driven gating in an automated pipeline by incorporating expert-elicited and data-driven prior knowledge within a Bayesian model. For a given gating hierarchy, OpenCyto promotes relatively fast and exhaustive gating that is interpretable in the context of standard hierarchical, two-dimensional projections of cell populations, which immunologists and other analysts are used to seeing. Our automated gating approach allows gating thresholds to be fine-tuned to optimize detection of informative cell populations in order to discriminate between subject cohorts based on objective external criteria such as vaccination status. Additionally, we utilize the LabKey software to provide a web-based user interface to visualize and to analyze FCM data and to provide a straightforward, easy-to-use interface to our automated pipeline.
+
+We demonstrate that the OpenCyto framework can recapitulate manual-gating efforts obtained on intracellular cytokine staining (ICS) data sets from the Human Immunology Project Consortium (HIPC) and the HIV Vaccine Trials Network (HVTN). For the manual gating as well as OpenCyto, we calculated the coefficients of variation of cellular population proportions across the samples and found that the variability from OpenCyto is well within the range of that of manual gating, even for rare cellular subpopulations. Furthermore, based on the gates constructed by OpenCyto, we were able to discriminate accurately the vaccination status of the subject cohorts as well as to identify the antigen-specific T-cells responding to the vaccine.
+
+The OpenCyto framework provides automated, data-driven gating of high-dimensional FCM data sets quickly, removing the time-consuming task of manual gating. By incorporating expert-elicited and data-driven prior knowledge, OpenCyto attains accurate gating of cell populations, including rare populations, while controlling variability relative to manual gating, thereby overcoming the subjectivity in manual gating. Finally, OpenCyto is clearly valuable in its ability to construct data-driven gates and reproducibly identify associated biomarkers to distinguish vaccination status within a cohort in clinical trial data.
+
 
 \end{document}
