@@ -1,0 +1,47 @@
+\documentclass{article}
+
+\setlength{\oddsidemargin}{0 in} % odd page left margin
+\setlength{\evensidemargin}{0 in} % even page left margin
+\setlength{\textwidth}{6 in}    % width of text
+
+\title{HVTN080 Summary}
+
+\begin{document}
+
+\maketitle
+ 
+<<setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE>>=
+opts_chunk$set(fig.align = 'center', dev = 'png', #fig.show = 'hold',
+               message = FALSE, warning = FALSE, cache = FALSE,
+               echo = FALSE, fig.path = 'figure/HVTN080-',
+               cache.path = 'cache/HVTN080-')
+  
+setwd("..")
+library(ProjectTemplate)
+load.project()
+@ 
+
+\section{Population Statistics}
+
+<<population_stats_summary>>=
+m_pop_stats <- melt(population_stats)
+colnames(m_pop_stats) <- c("Marker", "Sample", "Proportion")
+m_pop_stats$Marker <- factor(m_pop_stats$Marker)
+# Orders the factor levels to match the ordering of the gating hierarchy.
+# m_pop_stats$Marker <- factor(m_pop_stats$Marker, levels = rownames(population_stats))
+
+# Summarizes the proportions for each marker.
+summary_by_marker <- ddply(m_pop_stats, .(Marker), summarize,
+                      Mean = mean(Proportion), Median = median(Proportion),
+                      CV = sd(Proportion) / mean(Proportion))
+summary_by_marker <- subset(summary_by_marker, Marker != "root")
+@ 
+
+<<CV_by_marker>>=
+p <- ggplot(summary_by_marker, aes(x = Marker, y = CV)) + geom_bar()
+p <- p + theme(axis.text.x = element_text(angle = 90)) + ylab("Coefficient of Variation")
+p
+@ 
+
+
+\end{document}

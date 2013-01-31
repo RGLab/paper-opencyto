@@ -6,12 +6,12 @@
 # http://www.stat.auckland.ac.nz/~stat782/downloads/make-tutorial.pdf
 
 # Put all PDF targets here, separated by spaces.
-PDFS= paper-flow-pipeline.pdf
+PDFS= summary-HVTN080.pdf
 
 all: $(PDFS) 
 
 clean:
-	rm -f *.tex *.bbl *.blg *.aux *.out *.log *.spl *tikzDictionary demo*
+	rm -f *.bbl *.blg *.aux *.out *.log *.spl *tikzDictionary demo*
 
 %.pdf: %.Rnw
 	R -e "library(knitr); knit2pdf('$*.Rnw')"
