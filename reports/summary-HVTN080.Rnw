@@ -25,22 +25,82 @@ load.project()
 
 <<population_stats_summary>>=
 m_pop_stats <- melt(population_stats)
-colnames(m_pop_stats) <- c("Marker", "Sample", "Proportion")
-m_pop_stats$Marker <- factor(m_pop_stats$Marker)
-# Orders the factor levels to match the ordering of the gating hierarchy.
-# m_pop_stats$Marker <- factor(m_pop_stats$Marker, levels = rownames(population_stats))
+colnames(m_pop_stats) <- c("Marker", "Sample", "Proportion", "Stimulation")
+m_pop_stats$Marker <- as.character(m_pop_stats$Marker)
+m_pop_stats$Stimulation <- as.character(m_pop_stats$Stimulation)
+
+colnames(pData_gs_manual) <- c("Sample", "PTID", "Stim", "VISITNO")
+m_pop_stats <- plyr:::join(m_pop_stats, pData_gs_manual, by = "Sample")
+m_pop_stats <- subset(m_pop_stats, select = -c(Stim))
+m_pop_stats$VISITNO <- factor(m_pop_stats$VISITNO)
+m_pop_stats$PTID <- factor(m_pop_stats$PTID)
 
 # Summarizes the proportions for each marker.
-summary_by_marker <- ddply(m_pop_stats, .(Marker), summarize,
+summary_by_marker <- ddply(m_pop_stats, .(Marker, Stimulation), summarize,
                       Mean = mean(Proportion), Median = median(Proportion),
                       CV = sd(Proportion) / mean(Proportion))
 summary_by_marker <- subset(summary_by_marker, Marker != "root")
+
+# We breakdown the markers into groups so that the plot is cleaner and better
+# organized.
+summary_by_marker$marker_group <- "Other"
+summary_by_marker$marker_group <- with(summary_by_marker,
+                                  replace(marker_group, grep("^CD4:", Marker), "CD4"))
+summary_by_marker$marker_group <- with(summary_by_marker,
+                                  replace(marker_group, grep("^CD8:", Marker), "CD8"))
+
+
+m_pop_stats$marker_group <- "Other"
+m_pop_stats$marker_group <- with(m_pop_stats,
+                                 replace(marker_group, grep("^CD4:", Marker), "CD4"))
+m_pop_stats$marker_group <- with(m_pop_stats,
+                                 replace(marker_group, grep("^CD8:", Marker), "CD8"))
+
+
 @ 
 
 <<CV_by_marker>>=
-p <- ggplot(summary_by_marker, aes(x = Marker, y = CV)) + geom_bar()
-p <- p + theme(axis.text.x = element_text(angle = 90)) + ylab("Coefficient of Variation")
-p
+p1 <- ggplot(subset(summary_by_marker, marker_group == "Other"), aes(x = Marker, y = CV)) + geom_bar()
+p1 <- p1 + theme(axis.text.x = element_text(angle = 90)) + ylab("Coefficient of Variation")
+p1 <- p1 + facet_grid(Stimulation ~ .) + ggtitle("Gates")
+p1
+
+p2 <- ggplot(subset(summary_by_marker, marker_group == "CD4"), aes(x = Marker, y = CV)) + geom_bar()
+p2 <- p2 + theme(axis.text.x = element_text(angle = 90)) + ylab("Coefficient of Variation")
+p2 <- p2 + facet_grid(Stimulation ~ .) + ggtitle("CD4 Boolean Gates")
+p2
+  
+p3 <- ggplot(subset(summary_by_marker, marker_group == "CD8"), aes(x = Marker, y = CV)) + geom_bar()
+p3 <- p3 + theme(axis.text.x = element_text(angle = 90)) + ylab("Coefficient of Variation")
+p3 <- p3 + facet_grid(Stimulation ~ .) + ggtitle("CD8 Boolean Gates")
+p3
+
+@ 
+
+\section{Subject Proportions by Visit Number}
+
+<<proportions_by_visit>>=
+m_pop_stats <- subset(m_pop_stats, Marker != "root")
+
+# Gated Markers
+p <- ggplot(subset(m_pop_stats, marker_group == "Other"), aes(x = PTID, fill = VISITNO))
+p <- p + geom_bar(aes(weight = Proportion), position = "dodge")
+p <- p + facet_wrap(~ Marker, scale = "free") + theme_bw() # + theme(axis.text.x = element_blank())
+p + theme(axis.text.x = element_text(angle = 90))
+
+# CD4 Boolean Gates
+p <- ggplot(subset(m_pop_stats, marker_group == "CD4"), aes(x = PTID, fill = VISITNO))
+p <- p + geom_bar(aes(weight = Proportion), position = "dodge")
+p <- p + facet_wrap(~ Marker, scale = "free") + theme_bw() # + theme(axis.text.x = element_blank())
+p + theme(axis.text.x = element_text(angle = 90))
+
+# CD8 Boolean Gates
+p <- ggplot(subset(m_pop_stats, marker_group == "CD8"), aes(x = PTID, fill = VISITNO))
+p <- p + geom_bar(aes(weight = Proportion), position = "dodge")
+p <- p + facet_wrap(~ Marker, scale = "free") + theme_bw() # + theme(axis.text.x = element_blank())
+p + theme(axis.text.x = element_text(angle = 90))
+
+
 @ 
 
 

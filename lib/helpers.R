@@ -1,6 +1,5 @@
 #' Prettifies the table returned by population stats for the pipeline
 pretty_popstats <- function(population_stats) {
-  colnames(population_stats) <- paste("Sample", seq_len(ncol(population_stats)))
   rownames(population_stats) <- sapply(strsplit(rownames(population_stats), split = "/"), tail, n = 1)
 
   population_stats
