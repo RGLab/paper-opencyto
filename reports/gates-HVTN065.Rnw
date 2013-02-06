@@ -1,0 +1,62 @@
+\documentclass{article}
+
+\setlength{\oddsidemargin}{0 in} % odd page left margin
+\setlength{\evensidemargin}{0 in} % even page left margin
+\setlength{\textwidth}{6 in}    % width of text
+
+\begin{document}
+ 
+<<setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE>>=
+opts_chunk$set(fig.align = 'center', dev = 'png', #fig.show = 'hold',
+               message = FALSE, warning = FALSE, cache = FALSE,
+               echo = FALSE, fig.path = 'figure/gates-',
+               cache.path = 'cache/gates-')
+                 
+  
+setwd("..")
+library(ProjectTemplate)
+load.project()
+
+lapply(list.files("~/rglab/HIMCLyoplate/Gottardo/pipeline/R", full = TRUE), source)
+
+# Customizes the path where the GS is unarchived.
+# By default, /tmp is used and often can run out of space, due to the large nc files.
+archive_path <- '/loc/no-backup/ramey'
+@
+ 
+\title{HVTN065 Gates}
+ 
+\maketitle
+
+\section{Negative Controls}
+
+<<negctrl>>=
+# Restore the GS from the tar file
+gs_negctrl <- unarchive(file = file.path(archive_path, "HVTN065-negctrl.tar"),
+                        path = archive_path)
+plotGate(gs_negctrl, margin = TRUE, xbin = 64)
+@ 
+
+\clearpage
+
+\section{ENV-1-PTEG Stimulated Samples}
+
+<<ENV>>=
+# Restore the GS from the tar file
+gs_ENV <- unarchive(file = file.path(archive_path, "HVTN065-ENV.tar"),
+                    path = archive_path)
+plotGate(gs_ENV, margin = TRUE, xbin = 64)
+@ 
+
+\clearpage
+
+\section{GAG-1-PTEG Stimulated Samples}
+
+<<GAG>>=
+# Restore the GS from the tar file
+gs_GAG <- unarchive(file = file.path(archive_path, "HVTN065-GAG.tar"),
+                    path = archive_path)
+plotGate(gs_GAG, margin = TRUE, xbin = 64)
+@
+
+\end{document}
