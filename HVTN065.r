@@ -49,20 +49,18 @@ lapply(list.files("~/rglab/HIMCLyoplate/Gottardo/pipeline/R", full = TRUE), sour
 gating(gating_template, gs_negctrl, batch = TRUE, nslaves = 9)
 archive(gs_negctrl, file = file.path(archive_path, "HVTN065-negctrl.tar"))
 
-gating(gating_template, gs_ENV, batch = TRUE) #, nslaves = 9)
+gating(gating_template, gs_ENV, batch = TRUE, nslaves = 9)
 archive(gs_ENV, file = file.path(archive_path, "HVTN065-ENV.tar"))
 
 gating(gating_template, gs_GAG, batch = TRUE, nslaves = 9)
 archive(gs_GAG, file = file.path(archive_path, "HVTN065-GAG.tar"))
 
-population_stats <- list()
-population_stats$negctrl <- pretty_popstats(getPopStats(gs_negctrl))
-population_stats$ENV <- pretty_popstats(getPopStats(gs_ENV))
-population_stats$GAG <- pretty_popstats(getPopStats(gs_GAG))
+HVTN065_population_stats <- list()
+HVTN065_population_stats$negctrl <- pretty_popstats(getPopStats(gs_negctrl))
+HVTN065_population_stats$ENV <- pretty_popstats(getPopStats(gs_ENV))
+HVTN065_population_stats$GAG <- pretty_popstats(getPopStats(gs_GAG))
 
-save(population_stats, pData_gs_manual, file = "data/HVTN065-results.RData")
+HVTN065_pData_gs_manual <- pData_gs_manual
 
+save(HVTN065_population_stats, HVTN065_pData_gs_manual, file = "data/HVTN065-results.RData")
 
-
-
-debug(flowWorkspace:::.addGate)

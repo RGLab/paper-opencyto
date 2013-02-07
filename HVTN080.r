@@ -55,10 +55,12 @@ archive(gs_ENV, file = file.path(archive_path, "HVTN080-ENV.tar"))
 gating(gating_template, gs_GAG, batch = TRUE, nslaves = 9)
 archive(gs_GAG, file = file.path(archive_path, "HVTN080-GAG.tar"))
 
-population_stats <- list()
-population_stats$negctrl <- pretty_popstats(getPopStats(gs_negctrl))
-population_stats$ENV <- pretty_popstats(getPopStats(gs_ENV))
-population_stats$GAG <- pretty_popstats(getPopStats(gs_GAG))
+HVTN080_population_stats <- list()
+HVTN080_population_stats$negctrl <- pretty_popstats(getPopStats(gs_negctrl))
+HVTN080_population_stats$ENV <- pretty_popstats(getPopStats(gs_ENV))
+HVTN080_population_stats$GAG <- pretty_popstats(getPopStats(gs_GAG))
 
-save(population_stats, pData_gs_manual, file = "data/HVTN080-results.RData")
+HVTN080_pData_gs_manual <- pData_gs_manual
+
+save(HVTN080_population_stats, HVTN080_pData_gs_manual, file = "data/HVTN080-results.RData")
 
