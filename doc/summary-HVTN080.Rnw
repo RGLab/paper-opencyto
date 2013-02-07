@@ -24,7 +24,7 @@ load.project()
 \section{Population Statistics}
 
 <<population_stats_summary>>=
-m_pop_stats <- melt(population_stats)
+m_pop_stats <- melt(HVTN080_population_stats)
 colnames(m_pop_stats) <- c("Marker", "Sample", "Proportion", "Stimulation")
 m_pop_stats$Marker <- as.character(m_pop_stats$Marker)
 m_pop_stats$Stimulation <- as.character(m_pop_stats$Stimulation)
