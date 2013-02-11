@@ -34,7 +34,7 @@ archive_path <- '/loc/no-backup/ramey'
 # Restore the GS from the tar file
 gs_negctrl <- unarchive(file = file.path(archive_path, "HVTN065-negctrl.tar"),
                         path = archive_path)
-plotGate(gs_negctrl, margin = TRUE, xbin = 64)
+plotGate(gs_negctrl, lattice = TRUE, xbin = 128, margin = TRUE, cond="as.factor(Stim)+as.factor(VISITNO)+as.factor(PTID)")
 @ 
 
 \clearpage
@@ -45,7 +45,7 @@ plotGate(gs_negctrl, margin = TRUE, xbin = 64)
 # Restore the GS from the tar file
 gs_ENV <- unarchive(file = file.path(archive_path, "HVTN065-ENV.tar"),
                     path = archive_path)
-plotGate(gs_ENV, margin = TRUE, xbin = 64)
+plotGate(gs_ENV, lattice = TRUE, xbin = 128, margin = TRUE, cond="as.factor(Stim)+as.factor(VISITNO)+as.factor(PTID)")
 @ 
 
 \clearpage
@@ -56,7 +56,7 @@ plotGate(gs_ENV, margin = TRUE, xbin = 64)
 # Restore the GS from the tar file
 gs_GAG <- unarchive(file = file.path(archive_path, "HVTN065-GAG.tar"),
                     path = archive_path)
-plotGate(gs_GAG, margin = TRUE, xbin = 64)
+plotGate(gs_GAG, lattice = TRUE, xbin = 128, margin = TRUE, cond="as.factor(Stim)+as.factor(VISITNO)+as.factor(PTID)")
 @
 
 \end{document}

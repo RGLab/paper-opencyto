@@ -22,7 +22,7 @@ pData_gs_manual <- subset(pData(ncdf_flowSet), select = c(name, PTID, Stim, VISI
 # TEMP: For the moment, we randomly select 3 patient IDs and gate their samples.
 # TODO: Remove this entire code block to omit the random sampling
 set.seed(42)
-selected_PTIDs <- sample(unique(pData_gs_manual$PTID), 8)
+selected_PTIDs <- sample(unique(pData_gs_manual$PTID), 24)
 ncdf_flowSet <- ncdf_flowSet[which(pData_gs_manual$PTID %in% selected_PTIDs)]
 pData_gs_manual <- subset(pData_gs_manual, PTID %in% selected_PTIDs)
 
@@ -47,20 +47,29 @@ gating_template <- new("HVTN065")
 lapply(list.files("~/rglab/HIMCLyoplate/Gottardo/pipeline/R", full = TRUE), source)
 
 gating(gating_template, gs_negctrl, batch = TRUE, nslaves = 9)
+# In our summary scripts we require that the 'Stim' string be unique within a
+# patient-visit pairing, e.g., plotGate with conditional panels. We ensure that
+# the negative control strings are unique within a patient-visit pairing.
+pData(gs_negctrl) <- ddply(pData(gs_negctrl), .(PTID, VISITNO), transform,
+                           Stim = paste0(Stim, seq_along(Stim)))
 archive(gs_negctrl, file = file.path(archive_path, "HVTN065-negctrl.tar"))
 
-gating(gating_template, gs_ENV, batch = TRUE, nslaves = 9)
+gating(gating_template, gs_ENV, batch = TRUE)
 archive(gs_ENV, file = file.path(archive_path, "HVTN065-ENV.tar"))
 
 gating(gating_template, gs_GAG, batch = TRUE, nslaves = 9)
 archive(gs_GAG, file = file.path(archive_path, "HVTN065-GAG.tar"))
 
 HVTN065_population_stats <- list()
-HVTN065_population_stats$negctrl <- pretty_popstats(getPopStats(gs_negctrl))
-HVTN065_population_stats$ENV <- pretty_popstats(getPopStats(gs_ENV))
-HVTN065_population_stats$GAG <- pretty_popstats(getPopStats(gs_GAG))
+HVTN065_population_stats$negctrl <- getPopStats(gs_negctrl)
+HVTN065_population_stats$ENV <- getPopStats(gs_ENV)
+HVTN065_population_stats$GAG <- getPopStats(gs_GAG)
 
-HVTN065_pData_gs_manual <- pData_gs_manual
+HVTN065_pData_gs_manual <- rbind(pData(gs_negctrl), pData(gs_ENV), pData(gs_GAG))
+HVTN065_pData_gs_manual <- subset(HVTN065_pData_gs_manual, select = c(name, PTID, Stim, VISITNO))
 
 save(HVTN065_population_stats, HVTN065_pData_gs_manual, file = "data/HVTN065-results.RData")
 
+
+
+       
