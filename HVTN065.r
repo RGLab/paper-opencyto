@@ -1,9 +1,6 @@
 library(ProjectTemplate)
 load.project()
 
-# Loads the necessary pipeline code
-lapply(list.files("~/rglab/HIMCLyoplate/Gottardo/pipeline/R", full = TRUE), source)
-
 # Per Mike: "We have 62 subjects *2 visit *(1 env+1gag +2 negctrls)=496 samples (don't have IL4 in this data set)"
 ncdf_file <- '/loc/no-backup/ramey/hvtn065.nc'
 
@@ -22,7 +19,7 @@ pData_gs_manual <- subset(pData(ncdf_flowSet), select = c(name, PTID, Stim, VISI
 # TEMP: For the moment, we randomly select 3 patient IDs and gate their samples.
 # TODO: Remove this entire code block to omit the random sampling
 set.seed(42)
-selected_PTIDs <- sample(unique(pData_gs_manual$PTID), 24)
+selected_PTIDs <- sample(unique(pData_gs_manual$PTID), 2)
 ncdf_flowSet <- ncdf_flowSet[which(pData_gs_manual$PTID %in% selected_PTIDs)]
 pData_gs_manual <- subset(pData_gs_manual, PTID %in% selected_PTIDs)
 
@@ -35,6 +32,12 @@ ncdf_flowSet_trans <- transform(ncdf_flowSet, trans)
 # Constructs a GatingSet object from the ncdfFlowSet object
 gs_manual <- GatingSet(ncdf_flowSet_trans)
 
+gating_template <- gatingTemplate("HVTN065-GatingTemplate.csv", "HVTN065")
+
+gating(gating_template, gs_manual, nslaves = 9)
+
+
+
 # Instead of loading the raw FCS files, we clone the manual gates into 3 new gating sets.
 # One gating set per stimulation group: 1) negctrl, 2) ENV-1-PTEG, and 3) GAG-1-PTEG
 gs_negctrl <- clone(gs_manual[which(pData_gs_manual$Stim == "negctrl")])
@@ -43,8 +46,9 @@ gs_GAG <- clone(gs_manual[which(pData_gs_manual$Stim == "GAG-1-PTEG")])
 
 # Now we apply the automated pipeline to each gating set and archive the results
 # in the 'archive_path'.
-gating_template <- new("HVTN065")
-lapply(list.files("~/rglab/HIMCLyoplate/Gottardo/pipeline/R", full = TRUE), source)
+gating_template <- gatingTemplate("HVTN065-GatingTemplate.csv", "HVTN065")
+
+gating(gating_template, gs_manual)
 
 gating(gating_template, gs_negctrl, batch = TRUE, nslaves = 9)
 # In our summary scripts we require that the 'Stim' string be unique within a
