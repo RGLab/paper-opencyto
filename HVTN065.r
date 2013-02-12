@@ -22,15 +22,21 @@ pData_gs_manual <- subset(pData(ncdf_flowSet), select = c(name, PTID, Stim, VISI
 # TEMP: For the moment, we randomly select 3 patient IDs and gate their samples.
 # TODO: Remove this entire code block to omit the random sampling
 set.seed(42)
-selected_PTIDs <- sample(unique(pData_gs_manual$PTID), 24)
-ncdf_flowSet <- ncdf_flowSet[which(pData_gs_manual$PTID %in% selected_PTIDs)]
+selected_PTIDs <- sample(unique(pData_gs_manual$PTID), 8)
 pData_gs_manual <- subset(pData_gs_manual, PTID %in% selected_PTIDs)
 
-# Determines transformation for all channels except for "Time" and the sidescatter channels
-trans <- estimateMedianLogicle(ncdf_flowSet, channels = colnames(ncdf_flowSet[[1]])[-c(1:3, 5)])
+# To overcome some issues with NetCDF files, Mike suggested that I manually clone
+# the CDF file before cloning it.
+ncdf_flowSet <- ncdf_flowSet[which(pData_gs_manual$PTID %in% selected_PTIDs)]
+ncdf_clone <- clone.ncdfFlowSet(ncdf_flowSet,
+                                ncdfFile = file.path(archive_path, "hvtn065-subset.nc"),
+                                isEmpty = FALSE)
+trans <- estimateMedianLogicle(ncdf_clone, channels = colnames(ncdf_flowSet[[1]])[-c(1:3, 5)])
 
-# Applies the estimated transformation to the ncdfFlow set object
-ncdf_flowSet_trans <- transform(ncdf_flowSet, trans)
+# Determines transformation for all channels except for "Time" and the sidescatter
+# channels and then applies the estimated transformation to the cloned ncdfFlow
+# set object.
+ncdf_flowSet_trans <- transform(ncdf_clone, trans)
 
 # Constructs a GatingSet object from the ncdfFlowSet object
 gs_manual <- GatingSet(ncdf_flowSet_trans)
@@ -41,17 +47,18 @@ gs_negctrl <- clone(gs_manual[which(pData_gs_manual$Stim == "negctrl")])
 gs_ENV <- clone(gs_manual[which(pData_gs_manual$Stim == "ENV-1-PTEG")])
 gs_GAG <- clone(gs_manual[which(pData_gs_manual$Stim == "GAG-1-PTEG")])
 
+# In our summary scripts we require that the 'Stim' string be unique within a
+# patient-visit pairing, e.g., plotGate with conditional panels. We ensure that
+# the negative control strings are unique within a patient-visit pairing.
+pData(gs_negctrl) <- ddply(pData(gs_negctrl), .(PTID, VISITNO), transform,
+                           Stim = paste0(Stim, seq_along(Stim)))
+
 # Now we apply the automated pipeline to each gating set and archive the results
 # in the 'archive_path'.
 gating_template <- new("HVTN065")
 lapply(list.files("~/rglab/HIMCLyoplate/Gottardo/pipeline/R", full = TRUE), source)
 
 gating(gating_template, gs_negctrl, batch = TRUE, nslaves = 9)
-# In our summary scripts we require that the 'Stim' string be unique within a
-# patient-visit pairing, e.g., plotGate with conditional panels. We ensure that
-# the negative control strings are unique within a patient-visit pairing.
-pData(gs_negctrl) <- ddply(pData(gs_negctrl), .(PTID, VISITNO), transform,
-                           Stim = paste0(Stim, seq_along(Stim)))
 archive(gs_negctrl, file = file.path(archive_path, "HVTN065-negctrl.tar"))
 
 gating(gating_template, gs_ENV, batch = TRUE)
