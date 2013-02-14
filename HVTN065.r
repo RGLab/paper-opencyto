@@ -4,7 +4,8 @@ load.project()
 # Loads the necessary pipeline code
 lapply(list.files("~/rglab/HIMCLyoplate/Gottardo/pipeline/R", full = TRUE), source)
 
-# Per Mike: "We have 62 subjects *2 visit *(1 env+1gag +2 negctrls)=496 samples (don't have IL4 in this data set)"
+# Per Mike: We have 62 subjects * 2 visits * (1 ENV + 1 GAG + 2 negative controls) = 496 samples
+# (We don't have IL4 in this data set)
 ncdf_file <- '/loc/no-backup/ramey/hvtn065.nc'
 
 ncdf_flowSet <- ncdfFlowSet_open(ncdf_file)
@@ -19,30 +20,17 @@ archive_path <- '/loc/no-backup/ramey'
 #  name, PTID, Stim, VISITNO
 pData_gs_manual <- subset(pData(ncdf_flowSet), select = c(name, PTID, Stim, VISITNO))
 
-# TEMP: For the moment, we randomly select 3 patient IDs and gate their samples.
-# TODO: Remove this entire code block to omit the random sampling
-set.seed(42)
-selected_PTIDs <- sample(unique(pData_gs_manual$PTID), 30)
-
-# To overcome some issues with NetCDF files, Mike suggested that I manually clone
-# the CDF file before cloning it.
-ncdf_flowSet <- ncdf_flowSet[which(pData_gs_manual$PTID %in% selected_PTIDs)]
-ncdf_clone <- clone.ncdfFlowSet(ncdf_flowSet,
-                                ncdfFile = file.path(archive_path, "hvtn065-subset.nc"),
-                                isEmpty = FALSE)
-trans <- estimateMedianLogicle(ncdf_clone, channels = colnames(ncdf_flowSet[[1]])[-c(1:3, 5)])
-
 # Determines transformation for all channels except for "Time" and the sidescatter
 # channels and then applies the estimated transformation to the cloned ncdfFlow
 # set object.
-ncdf_flowSet_trans <- transform(ncdf_clone, trans)
+trans <- estimateMedianLogicle(ncdf_flowSet, channels = colnames(ncdf_flowSet[[1]])[-c(1:3, 5)])
+ncdf_flowSet_trans <- transform(ncdf_flowSet, trans)
 
 # Constructs a GatingSet object from the ncdfFlowSet object
 gs_manual <- GatingSet(ncdf_flowSet_trans)
 
 # Instead of loading the raw FCS files, we clone the manual gates into 3 new gating sets.
 # One gating set per stimulation group: 1) negctrl, 2) ENV-1-PTEG, and 3) GAG-1-PTEG
-pData_gs_manual <- subset(pData_gs_manual, PTID %in% selected_PTIDs)
 gs_negctrl <- clone(gs_manual[which(pData_gs_manual$Stim == "negctrl")])
 gs_ENV <- clone(gs_manual[which(pData_gs_manual$Stim == "ENV-1-PTEG")])
 gs_GAG <- clone(gs_manual[which(pData_gs_manual$Stim == "GAG-1-PTEG")])
@@ -61,7 +49,7 @@ lapply(list.files("~/rglab/HIMCLyoplate/Gottardo/pipeline/R", full = TRUE), sour
 gating(gating_template, gs_negctrl, batch = TRUE, nslaves = 9)
 archive(gs_negctrl, file = file.path(archive_path, "HVTN065-negctrl.tar"))
 
-gating(gating_template, gs_ENV, batch = TRUE)
+gating(gating_template, gs_ENV, batch = TRUE, nslaves = 9)
 archive(gs_ENV, file = file.path(archive_path, "HVTN065-ENV.tar"))
 
 gating(gating_template, gs_GAG, batch = TRUE, nslaves = 9)
