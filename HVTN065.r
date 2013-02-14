@@ -22,8 +22,7 @@ pData_gs_manual <- subset(pData(ncdf_flowSet), select = c(name, PTID, Stim, VISI
 # TEMP: For the moment, we randomly select 3 patient IDs and gate their samples.
 # TODO: Remove this entire code block to omit the random sampling
 set.seed(42)
-selected_PTIDs <- sample(unique(pData_gs_manual$PTID), 8)
-pData_gs_manual <- subset(pData_gs_manual, PTID %in% selected_PTIDs)
+selected_PTIDs <- sample(unique(pData_gs_manual$PTID), 30)
 
 # To overcome some issues with NetCDF files, Mike suggested that I manually clone
 # the CDF file before cloning it.
@@ -43,6 +42,7 @@ gs_manual <- GatingSet(ncdf_flowSet_trans)
 
 # Instead of loading the raw FCS files, we clone the manual gates into 3 new gating sets.
 # One gating set per stimulation group: 1) negctrl, 2) ENV-1-PTEG, and 3) GAG-1-PTEG
+pData_gs_manual <- subset(pData_gs_manual, PTID %in% selected_PTIDs)
 gs_negctrl <- clone(gs_manual[which(pData_gs_manual$Stim == "negctrl")])
 gs_ENV <- clone(gs_manual[which(pData_gs_manual$Stim == "ENV-1-PTEG")])
 gs_GAG <- clone(gs_manual[which(pData_gs_manual$Stim == "GAG-1-PTEG")])

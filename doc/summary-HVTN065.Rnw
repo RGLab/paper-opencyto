@@ -40,9 +40,9 @@ m_pop_stats$VISITNO <- factor(m_pop_stats$VISITNO)
 m_pop_stats$PTID <- factor(m_pop_stats$PTID)
 
 # Summarizes the proportions for each marker.
-summary_by_marker <- ddply(m_pop_stats, .(Marker, Stimulation), summarize,
-                      Mean = mean(Proportion), Median = median(Proportion),
-                      CV = sd(Proportion) / mean(Proportion))
+summary_by_marker <- ddply(m_pop_stats, .(Marker, Stimulation, VISITNO), summarize,
+                           Mean = mean(Proportion), Median = median(Proportion),
+                           CV = sd(Proportion) / mean(Proportion))
 
 # We breakdown the markers into groups so that the plot is cleaner and better
 # organized.
@@ -70,48 +70,82 @@ summary_by_marker$Marker <- sapply(strsplit(summary_by_marker$Marker, split = ":
 
 m_pop_stats$Marker <- sapply(strsplit(m_pop_stats$Marker, split = "/"), tail, n = 1)
 summary_by_marker$Marker <- sapply(strsplit(summary_by_marker$Marker, split = "/"), tail, n = 1)
+
+# For each patient, we average the proportions across stimulation groups for each visit number.
+# This produces a cleaner summary of the difference in proportions between visits 2 and 12 across patients.
+prop_summary <- ddply(m_pop_stats, .(Marker, PTID, VISITNO), summarize, avg_prop = mean(Proportion))
 @ 
 
 <<CV_by_marker>>=
-p1 <- ggplot(subset(summary_by_marker, marker_group == "Other"), aes(x = Marker, y = CV)) + geom_bar()
+p1 <- ggplot(subset(summary_by_marker, marker_group == "Other"), aes(x = Marker, fill = VISITNO))
+p1 <- p1 + geom_bar(aes(weight = CV), position = "dodge")
 p1 <- p1 + theme(axis.text.x = element_text(angle = 90)) + ylab("Coefficient of Variation")
 p1 <- p1 + facet_grid(Stimulation ~ .) + ggtitle("Gates")
 p1
-
-p2 <- ggplot(subset(summary_by_marker, marker_group == "CD4"), aes(x = Marker, y = CV)) + geom_bar()
+  
+p2 <- ggplot(subset(summary_by_marker, marker_group == "CD4"), aes(x = Marker, fill = VISITNO))
+p2 <- p2 + geom_bar(aes(weight = CV), position = "dodge")
 p2 <- p2 + theme(axis.text.x = element_text(angle = 90)) + ylab("Coefficient of Variation")
 p2 <- p2 + facet_grid(Stimulation ~ .) + ggtitle("CD4 Gates")
 p2
-  
-p3 <- ggplot(subset(summary_by_marker, marker_group == "CD8"), aes(x = Marker, y = CV)) + geom_bar()
+
+p3 <- ggplot(subset(summary_by_marker, marker_group == "CD8"), aes(x = Marker, fill = VISITNO))
+p3 <- p3 + geom_bar(aes(weight = CV), position = "dodge")
 p3 <- p3 + theme(axis.text.x = element_text(angle = 90)) + ylab("Coefficient of Variation")
 p3 <- p3 + facet_grid(Stimulation ~ .) + ggtitle("CD8 Gates")
 p3
-
 @ 
 
 \section{Subject Proportions by Visit Number}
 
 <<proportions_by_visit>>=
-# Gated Markers
-p <- ggplot(subset(m_pop_stats, marker_group == "Other"), aes(x = PTID, fill = VISITNO))
-p <- p + geom_bar(aes(weight = Proportion), position = "dodge")
-p <- p + facet_grid(Stimulation ~ Marker, scale = "free") + theme_bw() # + theme(axis.text.x = element_blank())
-p + theme(axis.text.x = element_text(angle = 90))
+p <- ggplot(prop_summary, aes(x = PTID, fill = VISITNO)) + geom_bar(aes(weight = avg_prop), position = "dodge")
+p <- p + facet_wrap(~ Marker, scale = "free") + theme_bw()
+p + theme(axis.text.x = element_text(angle = 90)) + ylab("Average Proportion Across Stimulation Groups")
+@ 
 
-# CD4 Boolean Gates
-p <- ggplot(subset(m_pop_stats, marker_group == "CD4"), aes(x = PTID, fill = VISITNO))
-p <- p + geom_bar(aes(weight = Proportion), position = "dodge")
-p <- p + facet_grid(Stimulation ~ Marker, scale = "free") + theme_bw() # + theme(axis.text.x = element_blank())
-# p <- p + facet_grid(Marker ~ Stimulation, scale = "free") + theme_bw() # + theme(axis.text.x = element_blank())
-# p <- p + facet_wrap(~ Marker, scale = "free") + theme_bw() # + theme(axis.text.x = element_blank())
-p + theme(axis.text.x = element_text(angle = 90))
+\section{Classification Summary}
 
-# CD8 Boolean Gates
-p <- ggplot(subset(m_pop_stats, marker_group == "CD8"), aes(x = PTID, fill = VISITNO))
-p <- p + geom_bar(aes(weight = Proportion), position = "dodge")
-p <- p + facet_wrap(~ Marker, scale = "free") + theme_bw() # + theme(axis.text.x = element_blank())
-p + theme(axis.text.x = element_text(angle = 90))
+<<classification_summary>>=
+class_data <- dcast(m_pop_stats, PTID + VISITNO ~ Marker, mean, value.var = "Proportion")
+
+# We randomly choose 50% of patients as training data and the remaining patients as test data
+set.seed(42)
+train_pct <- 1/2
+patients <- levels(class_data$PTID)
+num_patients <- length(patients)
+patients_train <- sample.int(num_patients, train_pct * num_patients)
+
+train_data <- subset(class_data, PTID %in% patients[patients_train])
+test_data <- subset(class_data, PTID %in% patients[-patients_train])
+
+train_x <- as.matrix(subset(train_data, select = -c(PTID, VISITNO)))
+train_y <- train_data$VISITNO
+
+test_x <- as.matrix(subset(test_data, select = -c(PTID, VISITNO)))
+test_y <- test_data$VISITNO
+
+glmnet_cv <- cv.glmnet(x = train_x, y = train_y, family = "binomial")
+
+# TODO: Select the optimal CV values and predict from 
+glmnet_fit <- glmnet(x = train_x, y = train_y, family = "binomial")
+
+# Plots the cross-validation fit from glmnet
+plot(glmnet_cv)
+
+# Determines which features should be kept for classification
+# If present, we manually remove the "(Intercept)"
+coef_glmnet <- coef(glmnet_cv)
+markers_kept <- rownames(coef_glmnet)[as.vector(coef_glmnet) != 0]
+markers_kept <- markers_kept[!grepl("(Intercept)", markers_kept)]
+
+# We apply 10-fold cross-validation using the 'trainControl' from the 'caret'
+# package to select the optimal features with the 'glmnet' classifier.
+fitControl <- trainControl(method = "cv", number = 10)
+glmnet_fit <- train(VISITNO ~ . - PTID, data = train_data, method = "glmnet", trControl = fitControl)
+
+
+
 
 
 @ 
