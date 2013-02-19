@@ -24,7 +24,7 @@ ncdf_flowSet <- ncdf_flowSet[which(pData_gs_manual$PTID %in% selected_PTIDs)]
 pData_gs_manual <- subset(pData_gs_manual, PTID %in% selected_PTIDs)
 
 # Determines transformation for all channels except for "Time" and the sidescatter channels
-trans <- estimateMedianLogicle(ncdf_flowSet, channels = colnames(ncdf_flowSet[[1]])[-c(1:3, 5)])
+trans <- estimateMedianLogicle(ncdf_flowSet, channels = colnames(ncdf_flowSet)[-c(1:3, 5)])
 
 # Applies the estimated transformation to the ncdfFlow set object
 ncdf_flowSet_trans <- transform(ncdf_flowSet, trans)
@@ -34,8 +34,7 @@ gs_manual <- GatingSet(ncdf_flowSet_trans)
 
 gating_template <- gatingTemplate("HVTN065-GatingTemplate.csv", "HVTN065")
 
-gating(gating_template, gs_manual, nslaves = 9)
-
+gating(gating_template, gs_manual, num_nodes = 2, parallel_type = "multicore")
 
 
 # Instead of loading the raw FCS files, we clone the manual gates into 3 new gating sets.
