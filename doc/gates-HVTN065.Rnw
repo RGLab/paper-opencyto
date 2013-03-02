@@ -32,9 +32,9 @@ archive_path <- '/loc/no-backup/ramey'
 
 <<negctrl>>=
 # Restore the GS from the tar file
-gs_negctrl <- unarchive(file = file.path(archive_path, "HVTN065-negctrl.tar"),
+gs_negctrl <- unarchive(file = file.path(archive_path, "HVTN065-negctrl-42patients.tar"),
                         path = archive_path)
-plotGate(gs_negctrl, lattice = TRUE, xbin = 128, margin = TRUE, cond="as.factor(Stim)+as.factor(VISITNO)+as.factor(PTID)")
+plotGate(gs_negctrl, lattice = TRUE, xbin = 128, margin = TRUE, cond = "as.factor(Stim)+as.factor(VISITNO)+as.factor(PTID)")
 @ 
 
 \clearpage
@@ -43,9 +43,9 @@ plotGate(gs_negctrl, lattice = TRUE, xbin = 128, margin = TRUE, cond="as.factor(
 
 <<ENV>>=
 # Restore the GS from the tar file
-gs_ENV <- unarchive(file = file.path(archive_path, "HVTN065-ENV.tar"),
+gs_ENV <- unarchive(file = file.path(archive_path, "HVTN065-ENV-42patients.tar"),
                     path = archive_path)
-plotGate(gs_ENV, lattice = TRUE, xbin = 128, margin = TRUE, cond="as.factor(Stim)+as.factor(VISITNO)+as.factor(PTID)")
+plotGate(gs_ENV, lattice = TRUE, xbin = 128, margin = TRUE, cond = "as.factor(Stim)+as.factor(VISITNO)+as.factor(PTID)")
 @ 
 
 \clearpage
@@ -54,9 +54,9 @@ plotGate(gs_ENV, lattice = TRUE, xbin = 128, margin = TRUE, cond="as.factor(Stim
 
 <<GAG>>=
 # Restore the GS from the tar file
-gs_GAG <- unarchive(file = file.path(archive_path, "HVTN065-GAG.tar"),
+gs_GAG <- unarchive(file = file.path(archive_path, "HVTN065-GAG-42patients.tar"),
                     path = archive_path)
-plotGate(gs_GAG, lattice = TRUE, xbin = 128, margin = TRUE, cond="as.factor(Stim)+as.factor(VISITNO)+as.factor(PTID)")
+plotGate(gs_GAG, lattice = TRUE, xbin = 128, margin = TRUE, cond = "as.factor(Stim)+as.factor(VISITNO)+as.factor(PTID)")
 @
 
 \end{document}

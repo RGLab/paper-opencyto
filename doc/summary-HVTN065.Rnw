@@ -44,100 +44,169 @@ summary_by_marker <- ddply(m_pop_stats, .(Marker, Stimulation, VISITNO), summari
                            Mean = mean(Proportion), Median = median(Proportion),
                            CV = sd(Proportion) / mean(Proportion))
 
-# We breakdown the markers into groups so that the plot is cleaner and better
-# organized.
-summary_by_marker$marker_group <- "Other"
-summary_by_marker$marker_group <- with(summary_by_marker,
-                                  replace(marker_group, grep("CD4", Marker), "CD4"))
-summary_by_marker$marker_group <- with(summary_by_marker,
-                                  replace(marker_group, grep("CD8", Marker), "CD8"))
-
-m_pop_stats$marker_group <- "Other"
-m_pop_stats$marker_group <- with(m_pop_stats,
-                                 replace(marker_group, grep("CD4", Marker), "CD4"))
-m_pop_stats$marker_group <- with(m_pop_stats,
-                                 replace(marker_group, grep("CD8", Marker), "CD8"))
-
-# To make the plots cleaner, we manually add the following markers to the "Other" group, so that they are shown
-# with the top-level markers.
-m_pop_stats$marker_group[m_pop_stats$Marker %in% c("CD3/CD4", "CD3/CD8", "CD3/not CD4", "not CD4/IFNg")] <- "Other"
-summary_by_marker$marker_group[summary_by_marker$Marker %in% c("CD3/CD4", "CD3/CD8", "CD3/not CD4", "not CD4/IFNg")] <- "Other"
-
-# Now, that we have grouped the markers by the CD4/CD8 subpopulations (if
-# applicable), we remove redundant information from the 'Marker' string.
-m_pop_stats$Marker <- sapply(strsplit(m_pop_stats$Marker, split = ":"), tail, n = 1)
-summary_by_marker$Marker <- sapply(strsplit(summary_by_marker$Marker, split = ":"), tail, n = 1)
-
-m_pop_stats$Marker <- sapply(strsplit(m_pop_stats$Marker, split = "/"), tail, n = 1)
-summary_by_marker$Marker <- sapply(strsplit(summary_by_marker$Marker, split = "/"), tail, n = 1)
-
 # For each patient, we average the proportions across stimulation groups for each visit number.
 # This produces a cleaner summary of the difference in proportions between visits 2 and 12 across patients.
 prop_summary <- ddply(m_pop_stats, .(Marker, PTID, VISITNO), summarize, avg_prop = mean(Proportion))
-@ 
 
-<<CV_by_marker>>=
-p1 <- ggplot(subset(summary_by_marker, marker_group == "Other"), aes(x = Marker, fill = VISITNO))
-p1 <- p1 + geom_bar(aes(weight = CV), position = "dodge")
-p1 <- p1 + theme(axis.text.x = element_text(angle = 90)) + ylab("Coefficient of Variation")
-p1 <- p1 + facet_grid(Stimulation ~ .) + ggtitle("Gates")
-p1
-  
-p2 <- ggplot(subset(summary_by_marker, marker_group == "CD4"), aes(x = Marker, fill = VISITNO))
-p2 <- p2 + geom_bar(aes(weight = CV), position = "dodge")
-p2 <- p2 + theme(axis.text.x = element_text(angle = 90)) + ylab("Coefficient of Variation")
-p2 <- p2 + facet_grid(Stimulation ~ .) + ggtitle("CD4 Gates")
-p2
+prop_summary$marker_group <- "Other"
+prop_summary$marker_group <- with(prop_summary,
+                                  replace(marker_group, grep("^CD4", Marker), "CD4"))
+prop_summary$marker_group <- with(prop_summary,
+                                  replace(marker_group, grep("^CD8", Marker), "CD8"))
+prop_summary$Marker <- sapply(strsplit(prop_summary$Marker, split = ":"), tail, n = 1)
+prop_summary$Marker <- sapply(strsplit(prop_summary$Marker, split = "/"), tail, n = 1)
 
-p3 <- ggplot(subset(summary_by_marker, marker_group == "CD8"), aes(x = Marker, fill = VISITNO))
-p3 <- p3 + geom_bar(aes(weight = CV), position = "dodge")
-p3 <- p3 + theme(axis.text.x = element_text(angle = 90)) + ylab("Coefficient of Variation")
-p3 <- p3 + facet_grid(Stimulation ~ .) + ggtitle("CD8 Gates")
-p3
+# Adds treatment group information to the proportion summary
+treatment_info <- data.frame(PTID = gsub("-", "", as.character(treatment.HVTN065$Ptid)),
+                             Treatment = "Treatment", stringsAsFactors = FALSE)
+treatment_info$Treatment <- replace(treatment_info$Treatment, grep("^Placebo", treatment.HVTN065$rx), "Placebo")
+
+prop_summary <- plyr::join(prop_summary, treatment_info)
 @ 
 
 \section{Subject Proportions by Visit Number}
 
 <<proportions_by_visit>>=
-p <- ggplot(prop_summary, aes(x = PTID, fill = VISITNO)) + geom_bar(aes(weight = avg_prop), position = "dodge")
-p <- p + facet_wrap(~ Marker, scale = "free") + theme_bw()
+p <- ggplot(subset(prop_summary, marker_group == "Other"), aes(x = PTID, fill = VISITNO))
+p <- p + geom_bar(aes(weight = avg_prop), position = "dodge")
+p <- p + facet_wrap(~ Marker, scale = "free") + theme_bw() + scale_x_discrete(breaks = NULL)
+p + theme(axis.text.x = element_text(angle = 90)) + ylab("Average Proportion Across Stimulation Groups")
+
+p <- ggplot(subset(prop_summary, marker_group == "CD4"), aes(x = PTID, fill = VISITNO))
+p <- p + geom_bar(aes(weight = avg_prop), position = "dodge")
+p <- p + facet_wrap(~ Marker, scale = "free") + theme_bw() + scale_x_discrete(breaks = NULL)
+p + theme(axis.text.x = element_text(angle = 90)) + ylab("Average Proportion Across Stimulation Groups")
+
+p <- ggplot(subset(prop_summary, marker_group == "CD8"), aes(x = PTID, fill = VISITNO))
+p <- p + geom_bar(aes(weight = avg_prop), position = "dodge")
+p <- p + facet_wrap(~ Marker, scale = "free") + theme_bw() + scale_x_discrete(breaks = NULL)
 p + theme(axis.text.x = element_text(angle = 90)) + ylab("Average Proportion Across Stimulation Groups")
 @ 
 
-\section{Classification Summary}
+<<proportions_by_treatment>>=
+p <- ggplot(subset(prop_summary, marker_group == "Other"), aes(x = VISITNO, y = avg_prop))
+p <- p + geom_boxplot() + scale_x_discrete(labels = c("Pre-vaccination", "Post-vaccination"))
+p <- p + facet_grid(Treatment ~ Marker, scale = "free")
+p + xlab("Vaccination Status") + ylab("Proportion of Parent Population")
+
+p <- ggplot(subset(prop_summary, marker_group == "CD4"), aes(x = VISITNO, y = avg_prop))
+p <- p + geom_boxplot() + scale_x_discrete(labels = c("Pre", "Post"))
+p <- p + facet_grid(Treatment ~ Marker, scale = "free") + ylim(0, 0.0025)
+p + xlab("Vaccination Status") + ylab("Proportion of Parent Population") + ggtitle('CD4 Cytokines')
+
+p <- ggplot(subset(prop_summary, marker_group == "CD8"), aes(x = VISITNO, y = avg_prop))
+p <- p + geom_boxplot() + scale_x_discrete(labels = c("Pre", "Post"))
+p <- p + facet_grid(Treatment ~ Marker, scale = "free") + ylim(0, 0.0025)
+p + xlab("Vaccination Status") + ylab("Proportion of Parent Population") + ggtitle('CD8 Cytokines')
+
+
+prop_summary_subset <- subset(prop_summary, marker_group != "Other")
+d_ply(prop_summary_subset, .(marker_group, Marker), function(summary_marker) {
+  p <- ggplot(summary_marker, aes(x = VISITNO, y = avg_prop))
+  p <- p + theme_bw()
+  p <- p + geom_boxplot() + scale_x_discrete(labels = c("Pre-vaccine", "Post-vaccine"))
+  p <- p + facet_grid(Treatment ~ Marker) + ggtitle(paste(summary_marker$marker_group, 'Cytokines'))
+  p <- p + xlab("Vaccination Status") + ylab("Proportion of Parent Population")
+  p <- p + theme(axis.text = element_text(size = 24))
+  p <- p + theme(axis.title.x = element_text(size = 24))
+  p <- p + theme(axis.title.y = element_text(size = 24))
+  p <- p + theme(strip.text.x = element_text(size = 24))
+  p <- p + theme(strip.text.y = element_text(size = 24))
+  p <- p + theme(title = element_text(size = 24))
+  p
+  png(with(summary_marker, paste0("plots/", marker_group, "-", Marker, ".png"))[1], width = 960, height = 960)
+  print(p)
+  dev.off()
+  NULL
+})
+
+p <- ggplot(subset(prop_summary, marker_group == "CD4"), aes(x = VISITNO, y = avg_prop))
+p <- p + geom_boxplot() + scale_x_discrete(labels = c("Pre", "Post"))
+p <- p + facet_grid(Treatment ~ Marker, scale = "free") + ylim(0, 0.0025)
+p + xlab("Vaccination Status") + ylab("Proportion of Parent Population") + ggtitle('CD4 Cytokines')
+
+p <- ggplot(subset(prop_summary, marker_group == "CD8"), aes(x = VISITNO, y = avg_prop))
+p <- p + geom_boxplot() + scale_x_discrete(labels = c("Pre", "Post"))
+p <- p + facet_grid(Treatment ~ Marker, scale = "free") + ylim(0, 0.0025)
+p + xlab("Vaccination Status") + ylab("Proportion of Parent Population") + ggtitle('CD8 Cytokines')
+
+@ 
+
+\section{Cytokine Priors}
+
+<<cytokine_priors>>=
+stimulation_groups <- names(cytokine_priors)
+root_populations <- names(cytokine_priors[[1]])
+
+root_stim_grid <- expand.grid(stimulation = stimulation_groups, root = root_populations)
+
+x <- seq(0, 5, length = 1000)
+prior_densities <- lapply(seq_len(nrow(root_stim_grid)), function(i) {
+  stim_group <- root_stim_grid$stimulation[i]
+  root_pop <- root_stim_grid$root[i]
+  marker_density <- lapply(cytokine_priors[[stim_group]][[root_pop]], function(marker_prior) {
+    with(marker_prior, dmvtmix(x, w = w0, mu = Mu0, sigma = Omega0, nu = 1))
+  })
+  melt_density <- melt(marker_density)
+  colnames(melt_density) <- c("Density", "Marker")
+  cbind.data.frame(x = x, Stimulation = stim_group, Population = root_pop, melt_density)
+})
+prior_densities <- do.call(rbind, prior_densities)
+
+p <- ggplot(subset(prior_densities, Marker == "TNFa"), aes(x, Density)) + geom_line() + facet_grid(Population ~ Stimulation)
+p <- p + ggtitle("TNFa Prior Densities")
+p
+
+x11()
+
+p <- ggplot(subset(prior_densities, Marker == "IFNg"), aes(x, Density)) + geom_line() + facet_grid(Population ~ Stimulation)
+p <- p + ggtitle("IFNg Prior Densities")
+p
+
+x11()
+
+p <- ggplot(subset(prior_densities, Marker == "IL2"), aes(x, Density)) + geom_line() + facet_grid(Population ~ Stimulation)
+p <- p + ggtitle("IL2 Prior Densities")
+p
+
+
+
+@ 
+
+%\section{Classification Summary}
 
 <<classification_summary>>=
-class_data <- dcast(m_pop_stats, PTID + VISITNO ~ Marker, mean, value.var = "Proportion")
+#class_data <- dcast(m_pop_stats, PTID + VISITNO ~ Marker, mean, value.var = "Proportion")
 
 # We randomly choose 50% of patients as training data and the remaining patients as test data
-set.seed(42)
-train_pct <- 1/2
-patients <- levels(class_data$PTID)
-num_patients <- length(patients)
-patients_train <- sample.int(num_patients, train_pct * num_patients)
+#set.seed(42)
+#train_pct <- 1/2
+#patients <- levels(class_data$PTID)
+#num_patients <- length(patients)
+#patients_train <- sample.int(num_patients, train_pct * num_patients)
 
-train_data <- subset(class_data, PTID %in% patients[patients_train])
-test_data <- subset(class_data, PTID %in% patients[-patients_train])
+#train_data <- subset(class_data, PTID %in% patients[patients_train])
+#test_data <- subset(class_data, PTID %in% patients[-patients_train])
 
-train_x <- as.matrix(subset(train_data, select = -c(PTID, VISITNO)))
-train_y <- train_data$VISITNO
+#train_x <- as.matrix(subset(train_data, select = -c(PTID, VISITNO)))
+#train_y <- train_data$VISITNO
 
-test_x <- as.matrix(subset(test_data, select = -c(PTID, VISITNO)))
-test_y <- test_data$VISITNO
+#test_x <- as.matrix(subset(test_data, select = -c(PTID, VISITNO)))
+#test_y <- test_data$VISITNO
 
-glmnet_cv <- cv.glmnet(x = train_x, y = train_y, family = "binomial")
+#glmnet_cv <- cv.glmnet(x = train_x, y = train_y, family = "binomial")
 
 # TODO: Select the optimal CV values and predict from 
-glmnet_fit <- glmnet(x = train_x, y = train_y, family = "binomial")
+#glmnet_fit <- glmnet(x = train_x, y = train_y, family = "binomial")
 
 # Plots the cross-validation fit from glmnet
-plot(glmnet_cv)
+#plot(glmnet_cv)
 
 # Determines which features should be kept for classification
 # If present, we manually remove the "(Intercept)"
-coef_glmnet <- coef(glmnet_cv)
-markers_kept <- rownames(coef_glmnet)[as.vector(coef_glmnet) != 0]
-markers_kept <- markers_kept[!grepl("(Intercept)", markers_kept)]
+#coef_glmnet <- coef(glmnet_cv)
+#markers_kept <- rownames(coef_glmnet)[as.vector(coef_glmnet) != 0]
+#markers_kept <- markers_kept[!grepl("(Intercept)", markers_kept)]
 
 @ 
 
