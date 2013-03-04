@@ -19,15 +19,3 @@ pretty_popstats <- function(population_stats, nodes = 1) {
 
   population_stats
 }
-
-#' Extracts marker name from verbose markers.
-#'
-#' Example: From "CD19 PcpCy55", we want simply "CD19"
-extract_markers <- function(markers) {
-  sapply(markers, function(marker) {
-    unlist(strsplit(marker, split = " "))[1]
-  }, USE.NAMES = FALSE)
-}
-
-
-
