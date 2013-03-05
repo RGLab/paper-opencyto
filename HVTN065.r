@@ -19,60 +19,52 @@ pData_fs <- subset(pData(ncdf_flowSet), select = c(name, PTID, Stim, VISITNO))
 # TEMP: For the moment, we randomly select 4 patient IDs and gate their samples.
 # TODO: Remove this entire code block to omit the random sampling
 set.seed(42)
-selected_PTIDs <- sample(unique(pData_fs$PTID), 20)
+selected_PTIDs <- sample(unique(pData_fs$PTID), 16)
 
 # To overcome some issues with NetCDF files, Mike suggested that I manually clone
 # the CDF file before transforming the samples.
 ncdf_flowSet <- ncdf_flowSet[which(pData_fs$PTID %in% selected_PTIDs)]
 ncdf_clone <- clone.ncdfFlowSet(ncdf_flowSet, ncdfFile = file.path(archive_path, "hvtn065-subset.nc"),
                                 isEmpty = FALSE)
+pData_fs <- subset(pData_fs, PTID %in% selected_PTIDs)
 
 # Determines transformation for all channels except for "Time" and the sidescatter channels
-trans <- openCyto:::estimateMedianLogicle(ncdf_flowSet, channels = colnames(ncdf_flowSet)[-c(1:3, 5)])
+trans <- openCyto:::estimateMedianLogicle(ncdf_clone, channels = colnames(ncdf_flowSet)[-c(1:3, 5)])
 
 # Applies the estimated transformation to the ncdfFlow set object
-ncdf_flowSet_trans <- transform(ncdf_flowSet, trans)
+ncdf_flowSet_trans <- transform(ncdf_clone, trans)
 
-# Constructs a GatingSet object from the ncdfFlowSet object
-gs_manual <- GatingSet(ncdf_flowSet_trans)
-
-# Instead of loading the raw FCS files, we clone the manual gates into 3 new gating sets.
-# One gating set per stimulation group: 1) negctrl, 2) ENV-1-PTEG, and 3) GAG-1-PTEG
-pData_fs <- subset(pData_fs, PTID %in% selected_PTIDs)
-gs_negctrl <- flowWorkspace:::clone(gs_manual[grep("negctrl", pData_fs$Stim)])
-gs_ENV <- flowWorkspace:::clone(gs_manual[grep("^ENV", pData_fs$Stim)])
-gs_GAG <- flowWorkspace:::clone(gs_manual[grep("^GAG", pData_fs$Stim)])
+# Constructs a GatingSet object from the transformed ncdfFlowSet object
+gs_HVTN065 <- GatingSet(ncdf_flowSet_trans)
 
 # Loads the GatingTemplate from the CSV file.
 gating_template <- gatingTemplate("HVTN065-GatingTemplate.csv", "HVTN065")
 
+# Now we apply the automated pipeline to each gating set
+gating(gating_template, gs_HVTN065, num_nodes = 12, parallel_type = "multicore")
+
 # In our summary scripts we require that the 'Stim' string be unique within a
 # patient-visit pairing, e.g., plotGate with conditional panels. We ensure that
 # the negative control strings are unique within a patient-visit pairing.
-pData(gs_negctrl) <- ddply(pData(gs_negctrl), .(PTID, VISITNO), transform,
+pData_HVTN065 <- pData(gs_HVTN065)
+pData_HVTN065$Stim <- as.character(pData_HVTN065$Stim)
+pData_negctrl <- subset(pData_HVTN065, Stim == "negctrl")
+pData_negctrl <- ddply(pData_negctrl, .(PTID, VISITNO), transform,
                            Stim = paste0(Stim, seq_along(Stim)))
+pData_HVTN065[pData_HVTN065$Stim == "negctrl", ] <- pData_negctrl
+pData_HVTN065 <- subset(pData_HVTN065, select = c(name, PTID, Stim, VISITNO))
+pData(gs_HVTN065) <- pData_HVTN065
 
-# Now we apply the automated pipeline to each gating set and archive the results
-message("Negative Controls")
-gating(gating_template, gs_negctrl, num_nodes = 10, parallel_type = "multicore")
-message("ENV Stimulated")
-gating(gating_template, gs_ENV, num_nodes = 10, parallel_type = "multicore")
-message("GAG Stimulated")
-gating(gating_template, gs_GAG, num_nodes = 10, parallel_type = "multicore")
+# TODO: Look at gates here. Don't archive for the moment.
+plotGate(gs_HVTN065, 2, lattice = TRUE, xbin = 128, margin = TRUE, cond = "as.factor(Stim)")
 
-archive(gs_negctrl, file = file.path(archive_path, "HVTN065-negctrl.tar"))
-archive(gs_ENV, file = file.path(archive_path, "HVTN065-ENV.tar"))
-archive(gs_GAG, file = file.path(archive_path, "HVTN065-GAG.tar"))
+# Archives the results
+# archive(gs_HVTN065, file = file.path(archive_path, "HVTN065.tar"))
 
-HVTN065_popstats <- list()
-HVTN065_popstats$negctrl <- getPopStats(gs_negctrl)
-HVTN065_popstats$ENV <- getPopStats(gs_ENV)
-HVTN065_popstats$GAG <- getPopStats(gs_GAG)
+popstats_HVTN065 <- getPopStats(gs_HVTN065)
 
-HVTN065_pData <- rbind(pData(gs_negctrl), pData(gs_ENV), pData(gs_GAG))
-HVTN065_pData <- subset(HVTN065_pData, select = c(name, PTID, Stim, VISITNO))
 
-save(HVTN065_popstats, HVTN065_pData, file = "data/HVTN065-results.RData")
+# save(popstats_HVTN065, pData_HVTN065, file = "data/HVTN065-results.RData")
 
 
 
