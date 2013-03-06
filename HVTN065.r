@@ -19,7 +19,7 @@ pData_fs <- subset(pData(ncdf_flowSet), select = c(name, PTID, Stim, VISITNO))
 # TEMP: For the moment, we randomly select 4 patient IDs and gate their samples.
 # TODO: Remove this entire code block to omit the random sampling
 set.seed(42)
-selected_PTIDs <- sample(unique(pData_fs$PTID), 16)
+selected_PTIDs <- sample(unique(pData_fs$PTID), 30)
 
 # To overcome some issues with NetCDF files, Mike suggested that I manually clone
 # the CDF file before transforming the samples.
@@ -41,7 +41,7 @@ gs_HVTN065 <- GatingSet(ncdf_flowSet_trans)
 gating_template <- gatingTemplate("HVTN065-GatingTemplate.csv", "HVTN065")
 
 # Now we apply the automated pipeline to each gating set
-gating(gating_template, gs_HVTN065, num_nodes = 12, parallel_type = "multicore")
+gating(gating_template, gs_HVTN065, prior_group = 'Stim', num_nodes = 12, parallel_type = "multicore")
 
 # In our summary scripts we require that the 'Stim' string be unique within a
 # patient-visit pairing, e.g., plotGate with conditional panels. We ensure that
@@ -50,22 +50,14 @@ pData_HVTN065 <- pData(gs_HVTN065)
 pData_HVTN065$Stim <- as.character(pData_HVTN065$Stim)
 pData_negctrl <- subset(pData_HVTN065, Stim == "negctrl")
 pData_negctrl <- ddply(pData_negctrl, .(PTID, VISITNO), transform,
-                           Stim = paste0(Stim, seq_along(Stim)))
+                       Stim = paste0(Stim, seq_along(Stim)))
 pData_HVTN065[pData_HVTN065$Stim == "negctrl", ] <- pData_negctrl
 pData_HVTN065 <- subset(pData_HVTN065, select = c(name, PTID, Stim, VISITNO))
 pData(gs_HVTN065) <- pData_HVTN065
 
-# TODO: Look at gates here. Don't archive for the moment.
-plotGate(gs_HVTN065, 2, lattice = TRUE, xbin = 128, margin = TRUE, cond = "as.factor(Stim)")
-
-# Archives the results
-# archive(gs_HVTN065, file = file.path(archive_path, "HVTN065.tar"))
-
 popstats_HVTN065 <- getPopStats(gs_HVTN065)
 
+save(popstats_HVTN065, pData_HVTN065, file = "data/HVTN065-results.RData")
 
-# save(popstats_HVTN065, pData_HVTN065, file = "data/HVTN065-results.RData")
-
-
-
-       
+# Archives the results
+archive(gs_HVTN065, file = file.path(archive_path, "HVTN065.tar"))
