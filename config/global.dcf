@@ -3,6 +3,6 @@ cache_loading: on
 munging: on
 logging: off
 load_libraries: on
-libraries: reshape2, plyr, ggplot2, stringr, lubridate, xtable, flowWorkspace, openCyto
+libraries: reshape2, plyr, ggplot2, stringr, lubridate, xtable, flowWorkspace, openCyto, glmnet, ROCR
 as_factors: on
 data_tables: off

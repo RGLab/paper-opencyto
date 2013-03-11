@@ -1,3 +1,5 @@
+start_time <- Sys.time()
+
 library(ProjectTemplate)
 load.project()
 
@@ -16,23 +18,11 @@ archive_path <- '/loc/no-backup/ramey/HVTN/065/'
 #  name, PTID, Stim, VISITNO
 pData_fs <- subset(pData(ncdf_flowSet), select = c(name, PTID, Stim, VISITNO))
 
-# TEMP: For the moment, we randomly select 4 patient IDs and gate their samples.
-# TODO: Remove this entire code block to omit the random sampling
-set.seed(42)
-selected_PTIDs <- sample(unique(pData_fs$PTID), 30)
-
-# To overcome some issues with NetCDF files, Mike suggested that I manually clone
-# the CDF file before transforming the samples.
-ncdf_flowSet <- ncdf_flowSet[which(pData_fs$PTID %in% selected_PTIDs)]
-ncdf_clone <- clone.ncdfFlowSet(ncdf_flowSet, ncdfFile = file.path(archive_path, "hvtn065-subset.nc"),
-                                isEmpty = FALSE)
-pData_fs <- subset(pData_fs, PTID %in% selected_PTIDs)
-
 # Determines transformation for all channels except for "Time" and the sidescatter channels
-trans <- openCyto:::estimateMedianLogicle(ncdf_clone, channels = colnames(ncdf_flowSet)[-c(1:3, 5)])
+trans <- openCyto:::estimateMedianLogicle(ncdf_flowSet, channels = colnames(ncdf_flowSet)[-c(1:3, 5)])
 
 # Applies the estimated transformation to the ncdfFlow set object
-ncdf_flowSet_trans <- transform(ncdf_clone, trans)
+ncdf_flowSet_trans <- transform(ncdf_flowSet, trans)
 
 # Constructs a GatingSet object from the transformed ncdfFlowSet object
 gs_HVTN065 <- GatingSet(ncdf_flowSet_trans)
@@ -61,3 +51,7 @@ save(popstats_HVTN065, pData_HVTN065, file = "data/HVTN065-results.RData")
 
 # Archives the results
 archive(gs_HVTN065, file = file.path(archive_path, "HVTN065.tar"))
+
+finish_time <- Sys.time()
+message("Time Elapsed:")
+print(finish_time - start_time)

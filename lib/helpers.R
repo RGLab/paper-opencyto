@@ -19,3 +19,16 @@ pretty_popstats <- function(population_stats, nodes = 1) {
 
   population_stats
 }
+
+#' Removes commas from a numeric stored as a string.
+#'
+#' In the summary for the HVTN065 manual gates, the cellular population counts
+#' are stored as character strings with commas denoting the thousands place. For
+#' instance, 3000 is stored as "3,000". We remove the commas from the strings
+#' and convert to the resulting string to a numeric.
+#'
+#' @param x character string with the nuisance commas
+#' @return the updated numeric value
+no_commas <- function(x) {
+  as.numeric(gsub(",", "", x))
+}
