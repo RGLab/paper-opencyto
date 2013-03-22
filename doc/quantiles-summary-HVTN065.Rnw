@@ -1,0 +1,270 @@
+\documentclass{article}
+
+\setlength{\oddsidemargin}{0 in} % odd page left margin
+\setlength{\evensidemargin}{0 in} % even page left margin
+\setlength{\textwidth}{6 in}    % width of text
+
+\title{Classification Study - HVTN065}
+
+\begin{document}
+
+\pagenumbering{gobble} % Remove page numbers (and reset to 1)
+
+\maketitle
+ 
+<<setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE>>=
+opts_chunk$set(fig.align = 'default', dev = 'png', message = FALSE, warning = FALSE,
+               cache = FALSE, echo = FALSE, fig.path = 'figure/HVTN065-',
+               cache.path = 'cache/HVTN065-', fig.width = 7.5, fig.height = 9.25,
+               out.width = "7.5in", out.height = "9.25in")
+  
+setwd("..")
+library(ProjectTemplate)
+load.project()
+
+colnames(pData_HVTN065) <- c("Sample", "PTID", "Stimulation", "VISITNO")
+
+# Adds treatment group information to the proportion summary
+treatment_info <- data.frame(PTID = gsub("-", "", as.character(treatment.HVTN065$Ptid)),
+                             Treatment = "Treatment", stringsAsFactors = FALSE)
+treatment_info$Treatment <- replace(treatment_info$Treatment, grep("^Placebo", treatment.HVTN065$rx), "Placebo")
+
+@ 
+
+<<prettify_popstats>>=
+
+# Remove all population statistics for the following markers
+markers_remove <- c("root", "cd8gate_pos", "cd4_neg", "cd8gate_neg", "cd4_pos")
+popstats_remove <- sapply(strsplit(rownames(popstats_HVTN065), "/"), tail, n = 1)
+popstats_remove <- popstats_remove %in% markers_remove
+popstats_HVTN065 <- popstats_HVTN065[!popstats_remove, ]
+
+rownames_popstats <- rownames(popstats_HVTN065)
+
+# Updates all cytokine combinations having the name of the form "cd4/TNFa" to "TNFa"
+which_combo <- grep("&", rownames_popstats)
+rownames_combo <- rownames_popstats[which_combo]
+rownames_combo <- gsub("cd4/TNFa", "TNFa", rownames_combo)
+rownames_combo <- gsub("cd8/TNFa", "TNFa", rownames_combo)
+rownames_combo <- gsub("cd4/IFNg", "IFNg", rownames_combo)
+rownames_combo <- gsub("cd8/IFNg", "IFNg", rownames_combo)
+rownames_combo <- gsub("cd4/IL2", "IL2", rownames_combo)
+rownames_combo <- gsub("cd8/IL2", "IL2", rownames_combo)
+rownames_popstats[which_combo] <- rownames_combo
+
+# Updates all cytokines gates to the form "cd4:TNFa"
+which_cytokines <- grep("TNFa|IFNg|IL2", rownames_popstats)
+rownames_cytokines <- rownames_popstats[which_cytokines]
+rownames_cytokines <- sapply(strsplit(rownames_cytokines, "cd3/"), tail, n = 1)
+rownames_cytokines <- gsub("/", ":", rownames_cytokines)
+rownames_popstats[which_cytokines] <- rownames_cytokines
+
+# Retains the last marker name for all non-cytokine gates
+rownames_noncytokines <- rownames_popstats[-which_cytokines]
+rownames_noncytokines <- sapply(strsplit(rownames_noncytokines, "/"), tail, n = 1)
+rownames_popstats[-which_cytokines] <- rownames_noncytokines
+
+# Updates popstats rownames
+rownames(popstats_HVTN065) <- rownames_popstats
+
+@ 
+
+<<cytokine_quantile_classification>>=
+# Loop through each cytokine combination and construct matrix of features
+set.seed(42)
+
+# Extracts the population statistics for the markers upstream (i.e., the gates
+# before the cytokines)
+which_cytokines <- grep("cd[48]:", rownames_popstats)
+popstats_upstream <- popstats_HVTN065[-which_cytokines, ]
+
+TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
+
+cytokine_combinations <- expand.grid(TNFa = TNFa, IFNg = IFNg, IL2 = IL2,
+                                     stringsAsFactors = FALSE)
+# To speed up the processing, we use a combination of plyr and foreach.
+registerDoMC(9)
+results <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quantiles) {
+  TNFa <- paste0("TNFa", cyto_quantiles$TNFa)
+  IFNg <- paste0("IFNg", cyto_quantiles$IFNg)
+  IL2 <- paste0("IL2", cyto_quantiles$IL2)
+
+  # Constructs a lookup table for the current cytokine quantiles
+  cytokines <- c(TNFa, IFNg, IL2)
+  cytokines <- c(paste0("cd4:", cytokines), paste0("cd8:", cytokines))
+
+  # Constructs a lookup table of the cytokine doubles for the current quantile
+  # combination
+  cytokine_doubles <- polyfunction_nodes(c(IFNg, IL2))
+  cytokine_doubles <- c(paste0("cd4:", cytokine_doubles),
+                        paste0("cd8:", cytokine_doubles))
+
+  # Constructs a lookup table of the cytokine triples for the current quantile
+  # combination
+  cytokine_triples <- polyfunction_nodes(c(TNFa, IFNg, IL2))
+  cytokine_triples <- c(paste0("cd4:", cytokine_triples),
+                        paste0("cd8:", cytokine_triples))
+
+  # Extracts the population statistics for the current cytokine quantiles and
+  # combinations
+  popstats_cytokines <- popstats_HVTN065[which(rownames_popstats %in% cytokines), ]
+  popstats_doubles <- popstats_HVTN065[which(rownames_popstats %in% cytokine_doubles), ]
+  popstats_triples <- popstats_HVTN065[which(rownames_popstats %in% cytokine_triples), ]
+
+  # The population statistics upstream and the current cytokine quantiles
+  popstats_combo <- rbind(popstats_upstream, popstats_cytokines, popstats_doubles,
+                          popstats_triples)
+
+  classification_summary(popstats_combo, treatment_info)
+}, .parallel = TRUE)
+
+@ 
+
+<<classification_results, results='asis'>>=
+
+# Extracts the classification accuracies for each cytokine combination.
+classification_results <- lapply(results, function(x) x$accuracy)
+classification_results <- do.call(rbind.data.frame, classification_results)
+
+cytokine_combinations <- apply(cytokine_combinations, 2, function(x) {
+  as.numeric(x) / 1e4
+})
+
+classification_results <- cbind(cytokine_combinations, classification_results)
+rownames(classification_results) <- NULL
+
+xtable(classification_results, digits = 4, caption = "Classification Results")
+@ 
+
+
+<<ROC, eval=FALSE>>=
+
+# We use the 'ROCR' package to construct ROC curves for each of the GAG and ENV
+# stimulations.
+ENV_probs <- 1 - as.vector(predict(ENV_glmnet_cv, ENV_test_x, s = "lambda.min", type = "response"))
+ENV_prediction <- prediction(ENV_probs, ENV_test_y)
+ENV_performance <- performance(ENV_prediction, "tpr", "fpr")
+ENV_cutoffs <- performance(ENV_prediction, "acc")
+
+GAG_probs <- 1 - as.vector(predict(GAG_glmnet_cv, GAG_test_x, s = "lambda.min", type = "response"))
+GAG_prediction <- prediction(GAG_probs, GAG_test_y)
+GAG_performance <- performance(GAG_prediction, "tpr", "fpr")
+GAG_cutoffs <- performance(GAG_prediction, "acc")
+
+# Next, we combine the ROC curves for each stimulation to construct a singlet
+# ggplot2 figure to plot the False Positive Rate vs True Positive Rate.
+stim_performance <- rbind.data.frame(
+  cbind(ENV_performance@x.values[[1]], ENV_performance@y.values[[1]], "ENV"),
+  cbind(GAG_performance@x.values[[1]], GAG_performance@y.values[[1]], "GAG")
+)
+colnames(stim_performance) <- c("FPR", "TPR", "Stimulation")
+stim_performance$FPR <- as.numeric(as.character(stim_performance$FPR))
+stim_performance$TPR <- as.numeric(as.character(stim_performance$TPR))
+
+# Next, we combine the ROC curves for each stimulation to construct a singlet
+# ggplot2 figure to plot the False Positive Rate vs True Positive Rate.
+stim_cutoffs <- rbind.data.frame(
+  cbind(ENV_cutoffs@x.values[[1]], ENV_cutoffs@y.values[[1]], "ENV"),
+  cbind(GAG_cutoffs@x.values[[1]], GAG_cutoffs@y.values[[1]], "GAG")
+)
+colnames(stim_cutoffs) <- c("Cutoff", "Accuracy", "Stimulation")
+stim_cutoffs$Cutoff <- as.numeric(as.character(stim_cutoffs$Cutoff))
+stim_cutoffs$Accuracy <- as.numeric(as.character(stim_cutoffs$Accuracy))
+
+
+p <- ggplot(stim_performance, aes(x = FPR, y = TPR, color = Stimulation))
+p + geom_line(aes(linetype = Stimulation)) + ggtitle("ROC Curve by Stimulation")
+
+# The cutoff value on the x-axis is the probability threshold used to determine
+# if a sample is classified as post-vaccine. For instance, if the threshold is
+# 0.6, then samples with probability estimates of class membership above 0.6 are
+# classified as post-vaccine.
+# The classification accuracy is given on the y-axis.
+p <- ggplot(stim_cutoffs, aes(x = Cutoff, y = Accuracy, color = Stimulation))
+p + geom_line(aes(linetype = Stimulation)) + ggtitle("Accuracy by Probability Threshold")
+
+@ 
+
+<<manual_gates, eval=FALSE>>=
+
+HVTN065_manual_gates <- subset(HVTN065_manual_gates, ANTIGEN %in% c("ENV-1-PTEG", "GAG-1-PTEG", "negctrl"))
+HVTN065_manual_gates <- subset(HVTN065_manual_gates, PTID %in% levels(m_pop_stats$PTID))
+HVTN065_manual_gates <- subset(HVTN065_manual_gates, VISITNO %in% c(2, 12))
+
+manual_counts <- ddply(HVTN065_manual_gates, .(PTID, VISITNO, ANTIGEN), function(x) {
+  counts <- data.frame(
+    PTID = x$PTID[1],
+    VISITNO = x$VISITNO[1],
+    ANTIGEN = x$ANTIGEN[1],
+    root = no_commas(x$COLLECTCT)[1],
+    Singlet = no_commas(x$SUBSET1_NUM)[1],
+    Live = no_commas(x$SUBSET2_NUM)[1],
+    Lymphocytes = no_commas(x$SUBSET3_NUM)[1],
+    CD3 = no_commas(x$SUBSET4_NUM)[1],
+    stringsAsFactors = FALSE
+  )
+  # To grab the appropriate counts from the CD4 and CD8 subtrees, we split the
+  # data.
+  x_CD4 <- subset(x, SUBSET5 == "CD4+")
+  x_CD8 <- subset(x, SUBSET5 == "CD8+")
+  
+  counts$CD4 <- no_commas(x_CD4$SUBSET5_NUM)[1]
+  counts$CD8 <- no_commas(x_CD8$SUBSET5_NUM)[1]
+  
+  # CD4 Cytokine Counts
+  for (i in seq_len(nrow(x_CD4))) {
+    cytokine_name <- paste0("CD4:", x_CD4$SUBSET6[i])
+    cytokine_count <- no_commas(x_CD4$SUBSET6_NUM[i])
+    counts[[cytokine_name]] <- cytokine_count
+  }
+  
+  # CD8 Cytokine Counts
+  for (i in seq_len(nrow(x_CD8))) {
+    cytokine_name <- paste0("CD8:", x_CD8$SUBSET6[i])
+    cytokine_count <- no_commas(x_CD8$SUBSET6_NUM[i])
+    counts[[cytokine_name]] <- cytokine_count
+  }
+
+  counts
+})
+
+# Calculates the proportions for the manual gates
+manual_proportions <- ddply(manual_counts, .(PTID, VISITNO, ANTIGEN), function(x) {
+  proportions <- with(x, data.frame(
+    PTID = PTID,
+    VISITNO = VISITNO,
+    ANTIGEN = ANTIGEN,
+    Singlet = Singlet / root,
+    Live = Live / Singlet,
+    Lymphocytes = Lymphocytes / Live,
+    CD3 = CD3 / Lymphocytes,
+    CD4 = CD4 / CD3,
+    CD8 = CD8 / CD3))
+  
+  for (CD4_cytokine in colnames(x)[grep("CD4:", colnames(x))]) {
+    proportions[[CD4_cytokine]] <- x[[CD4_cytokine]] / x[["CD4"]]
+  }
+  
+  for (CD8_cytokine in colnames(x)[grep("CD8:", colnames(x))]) {
+    proportions[[CD8_cytokine]] <- x[[CD8_cytokine]] / x[["CD8"]]
+  }
+
+  proportions
+})
+
+
+# TODO: Wait for full cytokine-gate information
+#   On 11 March 2013, Greg said he would look into it.
+#   After we have the full information, build a classifier for the manual proportions.
+
+
+@ 
+
+
+
+
+
+
+
+
+\end{document}

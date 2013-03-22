@@ -45,13 +45,15 @@ pData_HVTN065[pData_HVTN065$Stim == "negctrl", ] <- pData_negctrl
 pData_HVTN065 <- subset(pData_HVTN065, select = c(name, PTID, Stim, VISITNO))
 pData(gs_HVTN065) <- pData_HVTN065
 
+# Archives the results
+archive(gs_HVTN065, file = file.path(archive_path, "HVTN065.tar"))
+
+# Extracts the population statistics
 popstats_HVTN065 <- getPopStats(gs_HVTN065)
 
 save(popstats_HVTN065, pData_HVTN065, file = "data/HVTN065-results.RData")
 
-# Archives the results
-archive(gs_HVTN065, file = file.path(archive_path, "HVTN065.tar"))
-
 finish_time <- Sys.time()
 message("Time Elapsed:")
 print(finish_time - start_time)
+

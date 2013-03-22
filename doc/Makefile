@@ -6,7 +6,8 @@
 # http://www.stat.auckland.ac.nz/~stat782/downloads/make-tutorial.pdf
 
 # Put all PDF targets here, separated by spaces.
-PDFS= gates-HVTN065.pdf summary-HVTN065.pdf gates-HVTN080.pdf summary-HVTN080.pdf
+PDFS= quantiles-summary-HVTN065.pdf
+#PDFS= quantiles-summary-HVTN065.pdf gates-HVTN065.pdf summary-HVTN065.pdf gates-HVTN080.pdf summary-HVTN080.pdf
 
 all: $(PDFS) 
 
