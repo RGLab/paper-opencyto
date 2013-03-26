@@ -112,8 +112,7 @@ results <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quanti
   popstats_triples <- popstats_HVTN065[which(rownames_popstats %in% cytokine_triples), ]
 
   # The population statistics upstream and the current cytokine quantiles
-  popstats_combo <- rbind(popstats_upstream, popstats_cytokines, popstats_doubles,
-                          popstats_triples)
+  popstats_combo <- rbind(popstats_upstream, popstats_cytokines, popstats_doubles, popstats_triples)
 
   classification_summary(popstats_combo, treatment_info)
 }, .parallel = TRUE)
@@ -123,18 +122,110 @@ results <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quanti
 <<classification_results, results='asis'>>=
 
 # Extracts the classification accuracies for each cytokine combination.
-classification_results <- lapply(results, function(x) x$accuracy)
-classification_results <- do.call(rbind.data.frame, classification_results)
+accuracy_results <- lapply(results, function(x) x$accuracy)
+accuracy_results <- do.call(rbind.data.frame, accuracy_results)
+
+accuracy_results <- cbind(cytokine_combinations, accuracy_results)
+rownames(accuracy_results) <- NULL
+
+m_accuracy <- melt(accuracy_results, variable.name = "Treatment_Stimulation",
+                   value.name = "Accuracy")
+m_accuracy$Treatment_Stimulation <- as.character(m_accuracy$Treatment_Stimulation)
+
+m_accuracy$Stimulation <- "GAG"
+m_accuracy$Stimulation <- with(m_accuracy,
+                               replace(Stimulation, grep("^ENV", Treatment_Stimulation), "ENV"))
+
+m_accuracy$Treatment <- "Treatment"
+m_accuracy$Treatment <- with(m_accuracy,
+                             replace(Treatment, grep("placebo", Treatment_Stimulation), "Placebo"))
+
+Cytokine_Combination <- dlply(m_accuracy, .(TNFa, IFNg, IL2), function(cyto_combo) {
+  cyto_combo <- as.numeric(c(cyto_combo$TNFa[1], cyto_combo$IFNg[1], cyto_combo$IL2[1])) / 1e4
+  paste(cyto_combo, collapse = "\n")
+})
+m_accuracy$Cytokine_Combination <- do.call(c, Cytokine_Combination)
+
+p <- ggplot(m_accuracy, aes(x = Cytokine_Combination, fill = Treatment))
+p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
+p <- p + facet_grid(Stimulation ~ .) + ylim(0, 1)
+p <- p + xlab("Cytokine Quantiles (TNFa, IFNg, IL2)") + ylab("Classification Accuracy")
+p
+
+# Extracts the classification accuracies for each cytokine combination.
+accuracy_results <- lapply(results, function(x) x$accuracy)
+accuracy_results <- do.call(rbind.data.frame, accuracy_results)
 
 cytokine_combinations <- apply(cytokine_combinations, 2, function(x) {
   as.numeric(x) / 1e4
 })
 
-classification_results <- cbind(cytokine_combinations, classification_results)
-rownames(classification_results) <- NULL
+accuracy_results <- cbind(cytokine_combinations, accuracy_results)
+rownames(accuracy_results) <- NULL
 
-xtable(classification_results, digits = 4, caption = "Classification Results")
+xtable(accuracy_results, digits = 4, caption = "Classification Results")
 @ 
+
+<<cytokine_quantile_classification_pairing, eval=FALSE>>=
+# Per Greg: "We also want to do this paired, using the difference in
+# classification probabilities for two samples from the same subject. i.e.
+# d = Pr(sample 1 from subject 1 = post-vaccine) - Pr(sample 2 from subject 1 = post-vaccine).
+# If d > threshold, then classify sample 1 as post-vaccine and sample 2 as
+# pre-vaccine, otherwise if d < threshold classify sample 1 as pre-vaccine and
+# sample 2 as post-vaccine, otherwise mark them as unclassifiable."
+
+# Loop through each cytokine combination and construct matrix of features
+set.seed(42)
+
+# Extracts the population statistics for the markers upstream (i.e., the gates
+# before the cytokines)
+which_cytokines <- grep("cd[48]:", rownames_popstats)
+popstats_upstream <- popstats_HVTN065[-which_cytokines, ]
+
+TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
+
+cytokine_combinations <- expand.grid(TNFa = TNFa, IFNg = IFNg, IL2 = IL2,
+                                     stringsAsFactors = FALSE)
+# To speed up the processing, we use a combination of plyr and foreach.
+registerDoMC(9)
+results <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quantiles) {
+  # TEMP Stuff
+  cyto_quantiles <- cytokine_combinations[1,]
+
+  TNFa <- paste0("TNFa", cyto_quantiles$TNFa)
+  IFNg <- paste0("IFNg", cyto_quantiles$IFNg)
+  IL2 <- paste0("IL2", cyto_quantiles$IL2)
+
+  # Constructs a lookup table for the current cytokine quantiles
+  cytokines <- c(TNFa, IFNg, IL2)
+  cytokines <- c(paste0("cd4:", cytokines), paste0("cd8:", cytokines))
+
+  # Constructs a lookup table of the cytokine doubles for the current quantile
+  # combination
+  cytokine_doubles <- polyfunction_nodes(c(IFNg, IL2))
+  cytokine_doubles <- c(paste0("cd4:", cytokine_doubles),
+                        paste0("cd8:", cytokine_doubles))
+
+  # Constructs a lookup table of the cytokine triples for the current quantile
+  # combination
+  cytokine_triples <- polyfunction_nodes(c(TNFa, IFNg, IL2))
+  cytokine_triples <- c(paste0("cd4:", cytokine_triples),
+                        paste0("cd8:", cytokine_triples))
+
+  # Extracts the population statistics for the current cytokine quantiles and
+  # combinations
+  popstats_cytokines <- popstats_HVTN065[which(rownames_popstats %in% cytokines), ]
+  popstats_doubles <- popstats_HVTN065[which(rownames_popstats %in% cytokine_doubles), ]
+  popstats_triples <- popstats_HVTN065[which(rownames_popstats %in% cytokine_triples), ]
+
+  # The population statistics upstream and the current cytokine quantiles
+  popstats_combo <- rbind(popstats_upstream, popstats_cytokines, popstats_doubles, popstats_triples)
+
+  classification_summary_paired(popstats_combo, treatment_info)
+}, .parallel = TRUE)
+
+@ 
+
 
 
 <<ROC, eval=FALSE>>=

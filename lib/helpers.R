@@ -73,8 +73,7 @@ polyfunction_nodes <- function(markers) {
 
 #' @return TODO
 classification_summary <- function(popstats, treatment_info, train_pct = 0.6) {
-
-  m_popstats <- melt(popstats_combo)
+  m_popstats <- melt(popstats)
   colnames(m_popstats) <- c("Marker", "Sample", "Proportion")
   m_popstats$Marker <- as.character(m_popstats$Marker)
   m_popstats <- plyr:::join(m_popstats, pData_HVTN065, by = "Sample")
@@ -177,6 +176,211 @@ classification_summary <- function(popstats, treatment_info, train_pct = 0.6) {
   GAG_accuracy_treated <- mean(GAG_predictions_treated == GAG_test_y)
   GAG_accuracy_placebo <- mean(GAG_predictions_placebo == GAG_placebo_y)
   
+  
+  # Determines which features should be kept for classification
+  # If present, we manually remove the "(Intercept)"
+  ENV_coef_glmnet <- coef(ENV_glmnet_cv)
+  ENV_markers_kept <- rownames(ENV_coef_glmnet)[as.vector(ENV_coef_glmnet) != 0]
+  ENV_markers_kept <- ENV_markers_kept[!grepl("(Intercept)", ENV_markers_kept)]
+  
+  GAG_coef_glmnet <- coef(GAG_glmnet_cv)
+  GAG_markers_kept <- rownames(GAG_coef_glmnet)[as.vector(GAG_coef_glmnet) != 0]
+  GAG_markers_kept <- GAG_markers_kept[!grepl("(Intercept)", GAG_markers_kept)]
+
+  list(accuracy = list(GAG_treatment = GAG_accuracy_treated,
+         GAG_placebo = GAG_accuracy_placebo, ENV_treatment = ENV_accuracy_treated,
+         ENV_placebo = ENV_accuracy_placebo),
+       markers = list(GAG = GAG_markers_kept, ENV = ENV_markers_kept))
+}
+
+
+#' Classification summary for population statistics using pairing of patients
+#'
+#' For a data.frame of population statistics, we conduct a classification summary
+#' of the the stimulation groups using the given treatment information.
+#'
+#' Per Greg, we apply the following classification study:
+#' 1. Remove placebos before subsetting treatment group train classifier.
+#' 2. Predict placebos (should expect poor classification accuracy because there
+#'    should be no separation in the placebos)
+#' 3. Predict test data set (should expect good results)
+#' 
+#' Per Greg:
+#' "We also want to do this paired, using the difference in classification
+#' probabilities for two samples from the same subject. i.e.
+#' d = Pr(sample 1 from subject 1 = post-vaccine) -
+#' Pr(sample 2 from subject 1 = post-vaccine).
+#' If d > threshold, then classify sample 1 as post-vaccine and sample 2 as
+#' pre-vaccine, otherwise if d < threshold classify sample 1 as pre-vaccine and
+#' sample 2 as post-vaccine, otherwise mark them as unclassifiable."
+#' 
+#' @param popstats a data.frame containing population statistics from
+#' \code{getPopStats}
+#' @param treatment_info a data.frame containing a lookup of \code{PTID} and
+#' placebo/treatment information
+#' @param train_pct a numeric value determining the percentage of treated
+#' patients used as training data and the remaining patients as test data
+#' @param prob_threshold a numeric value above which the difference in
+#' classification probabilities for two samples from the same subject indicates
+#' that the first sample is classified as post-vaccine. See details.
+#' @return TODO
+classification_summary_paired <- function(popstats, treatment_info, train_pct = 0.6,
+                                          threshold = 0) {
+  m_popstats <- melt(popstats)
+  colnames(m_popstats) <- c("Marker", "Sample", "Proportion")
+  m_popstats$Marker <- as.character(m_popstats$Marker)
+  m_popstats <- plyr:::join(m_popstats, pData_HVTN065, by = "Sample")
+  m_popstats$VISITNO <- factor(m_popstats$VISITNO)
+  m_popstats$PTID <- factor(m_popstats$PTID)
+
+  # We stored the 'negctrl' with sample numbers appended to the strings so that
+  # plotGate could identify unique samples. Here, we strip the sample numbers to
+  # summarize the negative controls as a whole.
+  m_popstats$Stimulation <- with(m_popstats, replace(Stimulation,
+                                                   grep("^negctrl", Stimulation),
+                                                   "negctrl"))
+
+  m_popstats <- ddply(m_popstats, .(PTID, VISITNO, Stimulation, Marker),
+                      summarize, Proportion = mean(Proportion))
+
+  ENV_data <- subset(m_popstats, Stimulation != "GAG-1-PTEG")
+  GAG_data <- subset(m_popstats, Stimulation != "ENV-1-PTEG")
+
+  # Next, we normalize the population proportions for the stimulated samples to
+  # adjust for the background (negative controls) by calculating the difference of
+  # the proportions for the stimulated samples and the negative controls.
+  ENV_data <- ddply(ENV_data, .(PTID, VISITNO, Marker), summarize,
+                    diff_Proportion = diff(Proportion))
+  GAG_data <- ddply(GAG_data, .(PTID, VISITNO, Marker), summarize,
+                    diff_Proportion = diff(Proportion))
+
+  # Converts the melted data.frame to a wider format to continue the classification study.
+  ENV_data <- dcast(ENV_data, PTID + VISITNO ~ Marker, value.var = "diff_Proportion")
+  ENV_data <- plyr:::join(ENV_data, treatment_info)
+  ENV_data$PTID <- as.character(ENV_data$PTID)
+
+  GAG_data <- dcast(GAG_data, PTID + VISITNO ~ Marker, value.var = "diff_Proportion")
+  GAG_data <- plyr:::join(GAG_data, treatment_info)
+  GAG_data$PTID <- as.character(GAG_data$PTID)
+
+  ENV_placebo_data <- subset(ENV_data, Treatment == "Placebo", select = -Treatment)
+  ENV_treatment_data <- subset(ENV_data, Treatment == "Treatment", select = -Treatment)
+
+  GAG_placebo_data <- subset(GAG_data, Treatment == "Placebo", select = -Treatment)
+  GAG_treatment_data <- subset(GAG_data, Treatment == "Treatment", select = -Treatment)
+
+
+  # Partitions ENV data for classification study
+  ENV_treated_patients <- unique(ENV_treatment_data$PTID)
+  num_ENV_treated_patients <- length(ENV_treated_patients)
+  ENV_patients_train <- sample.int(num_ENV_treated_patients,
+                                   train_pct * num_ENV_treated_patients)
+
+  ENV_train_data <- subset(ENV_treatment_data,
+                           PTID %in% ENV_treated_patients[ENV_patients_train])
+  ENV_test_data <- subset(ENV_treatment_data,
+                          PTID %in% ENV_treated_patients[-ENV_patients_train])
+  
+  ENV_train_x <- as.matrix(subset(ENV_train_data, select = -c(PTID, VISITNO)))
+  ENV_train_y <- ENV_train_data$VISITNO
+
+  ENV_test_x <- as.matrix(subset(ENV_test_data, select = -c(PTID, VISITNO)))
+  ENV_test_y <- ENV_test_data$VISITNO
+  
+  ENV_placebo_x <- as.matrix(subset(ENV_placebo_data, select = -c(PTID, VISITNO)))
+  ENV_placebo_y <- ENV_placebo_data$VISITNO
+
+  # Trains the 'glmnet' classifier using cross-validation.
+  ENV_glmnet_cv <- cv.glmnet(x = ENV_train_x, y = ENV_train_y, family = "binomial")
+
+  # Computes classification probabilities for ENV
+  ENV_predictions_treated <- as.vector(predict(ENV_glmnet_cv, ENV_test_x,
+                                               s = "lambda.min", type = "response"))
+  ENV_predictions_placebo <- as.vector(predict(ENV_glmnet_cv, ENV_placebo_x,
+                                               s = "lambda.min", type = "response"))
+
+  # If the difference in classification probabilities exceeds the probability
+  # threshold, we assign the first sample as visit 2 and the second as visit 12.
+  # Otherwise, we assign the first sample as visit 12 and the second as visit 2.
+  ENV_correct_patients <- tapply(seq_along(ENV_test_data$PTID), ENV_test_data$PTID, function(i) {
+    if (diff(ENV_predictions_treated[i]) > prob_threshold) {
+      classification <- c("2", "12")
+    } else {
+      classification <- c("12", "2")
+    }
+    all(classification == ENV_test_y[i])
+  })
+
+  # If the difference in classification probabilities exceeds the probability
+  # threshold, we assign the first sample as visit 2 and the second as visit 12.
+  # Otherwise, we assign the first sample as visit 12 and the second as visit 2.
+  ENV_correct_placebo <- tapply(seq_along(ENV_placebo_data$PTID), ENV_placebo_data$PTID, function(i) {
+    if (diff(ENV_predictions_placebo[i]) > prob_threshold) {
+      classification <- c("2", "12")
+    } else {
+      classification <- c("12", "2")
+    }
+    all(classification == ENV_test_y[i])
+  })
+
+  ENV_accuracy_treated <- mean(ENV_correct_patients)
+  ENV_accuracy_placebo <- mean(ENV_correct_placebo)
+  
+  
+  # Partitions GAG data for classification study
+  GAG_treated_patients <- unique(GAG_treatment_data$PTID)
+  num_GAG_treated_patients <- length(GAG_treated_patients)
+  GAG_patients_train <- sample.int(num_GAG_treated_patients,
+                                   train_pct * num_GAG_treated_patients)
+  
+  GAG_train_data <- subset(GAG_treatment_data, PTID %in% GAG_treated_patients[GAG_patients_train])
+  GAG_test_data <- subset(GAG_treatment_data,
+                          PTID %in% GAG_treated_patients[-GAG_patients_train])
+  
+  GAG_train_x <- as.matrix(subset(GAG_train_data, select = -c(PTID, VISITNO)))
+  GAG_train_y <- GAG_train_data$VISITNO
+  
+  GAG_test_x <- as.matrix(subset(GAG_test_data, select = -c(PTID, VISITNO)))
+  GAG_test_y <- GAG_test_data$VISITNO
+  
+  GAG_placebo_x <- as.matrix(subset(GAG_placebo_data, select = -c(PTID, VISITNO)))
+  GAG_placebo_y <- GAG_placebo_data$VISITNO
+  
+  # Trains the 'glmnet' classifier using cross-validation.
+  GAG_glmnet_cv <- cv.glmnet(x = GAG_train_x, y = GAG_train_y, family = "binomial")
+  
+  # Computes classification probabilities for GAG
+  GAG_predictions_treated <- as.vector(predict(GAG_glmnet_cv, GAG_test_x,
+                                               s = "lambda.min", type = "response"))
+  GAG_predictions_placebo <- as.vector(predict(GAG_glmnet_cv, GAG_placebo_x,
+                                               s = "lambda.min", type = "response"))
+
+  # If the difference in classification probabilities exceeds the probability
+  # threshold, we assign the first sample as visit 2 and the second as visit 12.
+  # Otherwise, we assign the first sample as visit 12 and the second as visit 2.
+  GAG_correct_patients <- tapply(seq_along(GAG_test_data$PTID), GAG_test_data$PTID, function(i) {
+    if (diff(GAG_predictions_treated[i]) > prob_threshold) {
+      classification <- c("2", "12")
+    } else {
+      classification <- c("12", "2")
+    }
+    all(classification == GAG_test_y[i])
+  })
+
+  # If the difference in classification probabilities exceeds the probability
+  # threshold, we assign the first sample as visit 2 and the second as visit 12.
+  # Otherwise, we assign the first sample as visit 12 and the second as visit 2.
+  GAG_correct_placebo <- tapply(seq_along(GAG_placebo_data$PTID), GAG_placebo_data$PTID, function(i) {
+    if (diff(GAG_predictions_placebo[i]) > prob_threshold) {
+      classification <- c("2", "12")
+    } else {
+      classification <- c("12", "2")
+    }
+    all(classification == GAG_test_y[i])
+  })
+
+  GAG_accuracy_treated <- mean(GAG_correct_patients)
+  GAG_accuracy_placebo <- mean(GAG_correct_placebo)
   
   # Determines which features should be kept for classification
   # If present, we manually remove the "(Intercept)"
