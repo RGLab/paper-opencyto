@@ -64,12 +64,39 @@ rownames_noncytokines <- rownames_popstats[-which_cytokines]
 rownames_noncytokines <- sapply(strsplit(rownames_noncytokines, "/"), tail, n = 1)
 rownames_popstats[-which_cytokines] <- rownames_noncytokines
 
+# Reformats cytokine-marker combinations
+# The cytokine markers currently have the form:
+# !TNFa9950&IFNg9999&IL29990
+# We update them to have the form:
+# TNFa9950-IFNg9999+IL29990+
+
+TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
+
+for (quant in TNFa) {
+  quant <- paste0("TNFa", quant)
+  rownames_popstats <- gsub(paste0(quant), paste0(quant, "+"), rownames_popstats)
+  rownames_popstats <- gsub(paste0("!", quant, "\\+"), paste0(quant, "-"), rownames_popstats)
+}
+
+for (quant in IFNg) {
+  quant <- paste0("IFNg", quant)
+  rownames_popstats <- gsub(paste0(quant), paste0(quant, "+"), rownames_popstats)
+  rownames_popstats <- gsub(paste0("!", quant, "\\+"), paste0(quant, "-"), rownames_popstats)
+}
+
+for (quant in IL2) {
+  quant <- paste0("IL2", quant)
+  rownames_popstats <- gsub(paste0(quant), paste0(quant, "+"), rownames_popstats)
+  rownames_popstats <- gsub(paste0("!", quant, "\\+"), paste0(quant, "-"), rownames_popstats)
+}
+rownames_popstats <- gsub("&", "", rownames_popstats)
+
 # Updates popstats rownames
 rownames(popstats_HVTN065) <- rownames_popstats
 
 @ 
 
-<<cytokine_quantile_classification>>=
+<<cytokine_quantile_classification, eval=FALSE>>=
 # Loop through each cytokine combination and construct matrix of features
 set.seed(42)
 
@@ -83,7 +110,7 @@ TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
 cytokine_combinations <- expand.grid(TNFa = TNFa, IFNg = IFNg, IL2 = IL2,
                                      stringsAsFactors = FALSE)
 # To speed up the processing, we use a combination of plyr and foreach.
-registerDoMC(9)
+registerDoMC(12)
 results <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quantiles) {
   TNFa <- paste0("TNFa", cyto_quantiles$TNFa)
   IFNg <- paste0("IFNg", cyto_quantiles$IFNg)
@@ -119,7 +146,7 @@ results <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quanti
 
 @ 
 
-<<classification_results, results='asis'>>=
+<<classification_results, results='asis', eval=FALSE>>=
 
 # Extracts the classification accuracies for each cytokine combination.
 accuracy_results <- lapply(results, function(x) x$accuracy)
@@ -150,7 +177,7 @@ p <- ggplot(m_accuracy, aes(x = Cytokine_Combination, fill = Treatment))
 p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
 p <- p + facet_grid(Stimulation ~ .) + ylim(0, 1)
 p <- p + xlab("Cytokine Quantiles (TNFa, IFNg, IL2)") + ylab("Classification Accuracy")
-p
+p + ggtitle("Cytokine-Quantile Classification Accuracy of Visit Numbers")
 
 # Extracts the classification accuracies for each cytokine combination.
 accuracy_results <- lapply(results, function(x) x$accuracy)
@@ -166,7 +193,7 @@ rownames(accuracy_results) <- NULL
 xtable(accuracy_results, digits = 4, caption = "Classification Results")
 @ 
 
-<<cytokine_quantile_classification_pairing, eval=FALSE>>=
+<<cytokine_quantile_classification_paired>>=
 # Per Greg: "We also want to do this paired, using the difference in
 # classification probabilities for two samples from the same subject. i.e.
 # d = Pr(sample 1 from subject 1 = post-vaccine) - Pr(sample 2 from subject 1 = post-vaccine).
@@ -187,11 +214,8 @@ TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
 cytokine_combinations <- expand.grid(TNFa = TNFa, IFNg = IFNg, IL2 = IL2,
                                      stringsAsFactors = FALSE)
 # To speed up the processing, we use a combination of plyr and foreach.
-registerDoMC(9)
-results <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quantiles) {
-  # TEMP Stuff
-  cyto_quantiles <- cytokine_combinations[1,]
-
+registerDoMC(12)
+results_paired <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quantiles) {
   TNFa <- paste0("TNFa", cyto_quantiles$TNFa)
   IFNg <- paste0("IFNg", cyto_quantiles$IFNg)
   IL2 <- paste0("IL2", cyto_quantiles$IL2)
@@ -219,13 +243,180 @@ results <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quanti
   popstats_triples <- popstats_HVTN065[which(rownames_popstats %in% cytokine_triples), ]
 
   # The population statistics upstream and the current cytokine quantiles
-  popstats_combo <- rbind(popstats_upstream, popstats_cytokines, popstats_doubles, popstats_triples)
+  popstats_combo <- rbind(popstats_upstream, popstats_cytokines, popstats_doubles,
+                          popstats_triples)
 
-  classification_summary_paired(popstats_combo, treatment_info)
+  classification_summary(popstats_combo, treatment_info, paired = TRUE,
+                                prob_threshold = 0)
 }, .parallel = TRUE)
 
 @ 
 
+<<classification_results_paired, results='asis'>>=
+
+# Extracts the classification accuracies for each cytokine combination.
+accuracy_results <- lapply(results_paired, function(x) x$accuracy)
+accuracy_results <- do.call(rbind.data.frame, accuracy_results)
+
+accuracy_results <- cbind(cytokine_combinations, accuracy_results)
+rownames(accuracy_results) <- NULL
+
+m_accuracy <- melt(accuracy_results, variable.name = "Treatment_Stimulation",
+                   value.name = "Accuracy")
+m_accuracy$Treatment_Stimulation <- as.character(m_accuracy$Treatment_Stimulation)
+
+m_accuracy$Stimulation <- "GAG"
+m_accuracy$Stimulation <- with(m_accuracy,
+                               replace(Stimulation, grep("^ENV", Treatment_Stimulation), "ENV"))
+
+m_accuracy$Treatment <- "Treatment"
+m_accuracy$Treatment <- with(m_accuracy,
+                             replace(Treatment, grep("placebo", Treatment_Stimulation), "Placebo"))
+
+Cytokine_Combination <- dlply(m_accuracy, .(TNFa, IFNg, IL2), function(cyto_combo) {
+  cyto_combo <- as.numeric(c(cyto_combo$TNFa[1], cyto_combo$IFNg[1], cyto_combo$IL2[1])) / 1e4
+  paste(cyto_combo, collapse = "\n")
+})
+m_accuracy$Cytokine_Combination <- do.call(c, Cytokine_Combination)
+
+p <- ggplot(m_accuracy, aes(x = Cytokine_Combination, fill = Treatment))
+p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
+p <- p + facet_grid(Stimulation ~ .) + ylim(0, 1)
+p <- p + xlab("Cytokine Quantiles (TNFa, IFNg, IL2)") + ylab("Classification Accuracy")
+p + ggtitle("Cytokine-Quantile Classification Accuracy of Visit Numbers Paired by Patient")
+
+# Extracts the classification accuracies for each cytokine combination.
+accuracy_results <- lapply(results, function(x) x$accuracy)
+accuracy_results <- do.call(rbind.data.frame, accuracy_results)
+
+cytokine_combinations <- apply(cytokine_combinations, 2, function(x) {
+  as.numeric(x) / 1e4
+})
+
+accuracy_results <- cbind(cytokine_combinations, accuracy_results)
+rownames(accuracy_results) <- NULL
+
+xtable(accuracy_results, digits = 4, caption = "Classification Results")
+@ 
+
+<<top_results_summary>>=
+# We summarize the results for the top 3 cytokine-quantile combinations for each
+# stimulation group.
+# We choose the top 3 to be the largest differences in the classification
+# accuracies between the treatment and placebo groups.
+seq_top <- seq_len(3)
+
+accuracy_results <- ddply(accuracy_results, .(TNFa, IFNg, IL2), transform,
+                          diff_GAG = GAG_treatment - GAG_placebo,
+                          diff_ENV = ENV_treatment - ENV_placebo)
+
+which_GAG_top <- order(accuracy_results$diff_GAG, decreasing = TRUE)[seq_top]
+which_ENV_top <- order(accuracy_results$diff_ENV, decreasing = TRUE)[seq_top]
+
+GAG_top <- accuracy_results[which_GAG_top, ]
+ENV_top <- accuracy_results[which_ENV_top, ]
+
+@ 
+
+<<top_markers_summary, results="asis">>=
+# For the top 3 cytokine-quantile combinations from each stimulation group, we
+# provide the markers that were selected by 'glmnet'.
+
+GAG_top_markers <- lapply(seq_top, function(i) {
+  combo <- GAG_top[i,]
+  markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]$markers$GAG
+  strip_quantiles(markers, quantiles = c("9950", "9990", "9999"))
+})
+GAG_top_markers <- do.call(rbind, lapply(GAG_top_markers, paste, collapse = ", "))
+GAG_top_markers <- cbind.data.frame(cytokine_combinations[which_GAG_top, ], Markers = GAG_top_markers)
+
+ENV_top_markers <- lapply(seq_top, function(i) {
+  combo <- ENV_top[i,]
+  markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]$markers$ENV
+  strip_quantiles(markers, quantiles = c("9950", "9990", "9999"))
+})
+ENV_top_markers <- do.call(rbind, lapply(ENV_top_markers, paste, collapse = ", "))
+ENV_top_markers <- cbind.data.frame(cytokine_combinations[which_ENV_top, ], Markers = ENV_top_markers)
+
+xtable_out <- xtable(GAG_top_markers, digits = 4,
+                     caption = "Markers Selected by {\tt glmnet} for Top 3 GAG Cytokine-Quantile Combinations")
+print(xtable_out, include.rownames = FALSE)
+
+xtable_out <- xtable(ENV_top_markers, digits = 4,
+                     caption = "Markers Selected by {\tt glmnet} for Top 3 ENV Cytokine-Quantile Combinations")
+print(xtable_out, include.rownames = FALSE)
+
+@ 
+
+<<top_markers_proportions, eval=FALSE>>=
+
+# TODO: Move code from 'summary-HVTN065.Rnw' to here to summarize proportions
+
+# We prettify the population stats, so that they have a reduced number of nodes
+# in the output.
+popstats_HVTN065 <- pretty_popstats(popstats_HVTN065, nodes = 4)
+m_pop_stats <- melt(popstats_HVTN065)
+colnames(m_pop_stats) <- c("Marker", "Sample", "Proportion")
+m_pop_stats$Marker <- as.character(m_pop_stats$Marker)
+m_pop_stats <- subset(m_pop_stats, Marker != "root")
+
+colnames(pData_HVTN065) <- c("Sample", "PTID", "Stimulation", "VISITNO")
+m_pop_stats <- plyr:::join(m_pop_stats, pData_HVTN065, by = "Sample")
+m_pop_stats$VISITNO <- factor(m_pop_stats$VISITNO)
+m_pop_stats$PTID <- factor(m_pop_stats$PTID)
+
+# We stored the 'negctrl' with sample numbers appended to the strings so that
+# plotGate could identify unique samples. Here, we strip the sample numbers to
+# summarize the negative controls as a whole.
+m_pop_stats$Stimulation <- with(m_pop_stats, replace(Stimulation, grep("^negctrl", Stimulation), "negctrl"))
+
+# Summarizes the proportions for each marker.
+summary_by_marker <- ddply(m_pop_stats, .(Marker, Stimulation, VISITNO), summarize,
+                           CV = sd(Proportion) / mean(Proportion))
+
+# For each patient, we average the proportions across stimulation groups for each visit number.
+# This produces a cleaner summary of the difference in proportions between visits 2 and 12 across patients.
+prop_summary <- ddply(m_pop_stats, .(Marker, PTID, VISITNO), summarize, avg_prop = mean(Proportion))
+
+prop_summary$marker_group <- "Other"
+prop_summary$marker_group <- with(prop_summary,
+                                  replace(marker_group, grep("cd4/", Marker), "CD4"))
+prop_summary$marker_group <- with(prop_summary,
+                                  replace(marker_group, grep("cd8/", Marker), "CD8"))
+
+# Now, we clean up the marker names.
+prop_summary$Marker <- gsub(pattern = "!cd[48]/", replace = "!", x = prop_summary$Marker)
+markers_split <- strsplit(prop_summary$Marker, split = "&")
+prop_summary$Marker <- sapply(markers_split, function(marker_split) {
+  paste(sapply(strsplit(marker_split, split = "/"), tail, n = 1), collapse = "&")
+})
+
+# Adds treatment group information to the proportion summary
+treatment_info <- data.frame(PTID = gsub("-", "", as.character(treatment.HVTN065$Ptid)),
+                             Treatment = "Treatment", stringsAsFactors = FALSE)
+treatment_info$Treatment <- replace(treatment_info$Treatment, grep("^Placebo", treatment.HVTN065$rx), "Placebo")
+
+prop_summary <- plyr::join(prop_summary, treatment_info)
+@ 
+
+<<proportions_by_treatment, eval=FALSE>>=
+p <- ggplot(subset(prop_summary, marker_group == "Other"), aes(x = VISITNO, y = avg_prop))
+p <- p + geom_boxplot(aes(fill = Treatment)) + scale_x_discrete(labels = c("Pre", "Post"))
+p <- p + facet_wrap( ~ Marker, scale = "free")
+p + xlab("Vaccination Status") + ylab("Average Proportion Across Stimulation Groups")
+
+p <- ggplot(subset(prop_summary, marker_group == "CD4"), aes(x = VISITNO, y = avg_prop))
+p <- p + geom_boxplot(aes(fill = Treatment)) + scale_x_discrete(labels = c("Pre", "Post"))
+p <- p + facet_wrap( ~ Marker, scale = "free")
+p + xlab("Vaccination Status") + ylab("Average Proportion Across Stimulation Groups") + ggtitle('CD4 Cytokines')
+
+p <- ggplot(subset(prop_summary, marker_group == "CD8"), aes(x = VISITNO, y = avg_prop))
+p <- p + geom_boxplot(aes(fill = Treatment)) + scale_x_discrete(labels = c("Pre", "Post"))
+p <- p + facet_wrap( ~ Marker, scale = "free")
+p + xlab("Vaccination Status") + ylab("Average Proportion Across Stimulation Groups") + ggtitle('CD8 Cytokines')
+
+@ 
+ 
 
 
 <<ROC, eval=FALSE>>=
