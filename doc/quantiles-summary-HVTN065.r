@@ -1,37 +1,46 @@
-\documentclass{article}
+#' # Classification Study - HVTN065
 
-\setlength{\oddsidemargin}{0 in} % odd page left margin
-\setlength{\evensidemargin}{0 in} % even page left margin
-\setlength{\textwidth}{6 in}    % width of text
+#' In this document we conduct a classification study based on the automated
+#' gating results from the `OpenCyto` R package applied to the HVTN065 data set.
+#' In particular, we look at various combinations of quantiles for the TNFa, IFNg,
+#' and IL2 cytokines. For each of these three cytokines, we applied the quantiles
+#' 0.995, 0.999, and 0.9999. For one of the quantile combinations, we applied
+#' `flowClust` to fit the data for the given marker and applied the quantile
+#' specified as the gate. Then, we constructed polyfunctional gates for the three
+#' cytokines. For instance, suppose that we employed the following 3 quantiles:
+#'
+#' 1. TNFa: 0.999
+#' 2. IFNg: 0.995
+#' 3. IL2: 0.999
+#' 
+#' After constructing the gates for these quantiles, we construct the following
+#' $8 = 2^3$ polyfunctional gates.
+#'
+#' 1. TNFa+IFNg+IL2+
+#' 2. TNFa+IFNg+IL2-
+#' 3. ...
+#' 8. TNFa-IFNg-IL2-
+#'
+#' Our goal is to determine the quantiles that yield the best classification
+#' accuracy of patients' visits (i.e., pre- and post-vaccine).
 
-\title{Classification Study - HVTN065}
-
-\begin{document}
-
-\pagenumbering{gobble} % Remove page numbers (and reset to 1)
-
-\maketitle
- 
-<<setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE>>=
+#+ setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE
 opts_chunk$set(fig.align = 'default', dev = 'png', message = FALSE, warning = FALSE,
                cache = FALSE, echo = FALSE, fig.path = 'figure/HVTN065-',
-               cache.path = 'cache/HVTN065-', fig.width = 7.5, fig.height = 9.25,
-               out.width = "7.5in", out.height = "9.25in")
-  
+               cache.path = 'cache/HVTN065-', out.width = "7.5in", out.height = "9.25in")
+
+#+ load_data  
 setwd("..")
 library(ProjectTemplate)
 load.project()
 
+#+ prettify_results
 colnames(pData_HVTN065) <- c("Sample", "PTID", "Stimulation", "VISITNO")
 
 # Adds treatment group information to the proportion summary
 treatment_info <- data.frame(PTID = gsub("-", "", as.character(treatment.HVTN065$Ptid)),
                              Treatment = "Treatment", stringsAsFactors = FALSE)
 treatment_info$Treatment <- replace(treatment_info$Treatment, grep("^Placebo", treatment.HVTN065$rx), "Placebo")
-
-@ 
-
-<<prettify_popstats>>=
 
 # Remove all population statistics for the following markers
 markers_remove <- c("root", "cd8gate_pos", "cd4_neg", "cd8gate_neg", "cd4_pos")
@@ -69,7 +78,6 @@ rownames_popstats[-which_cytokines] <- rownames_noncytokines
 # !TNFa9950&IFNg9999&IL29990
 # We update them to have the form:
 # TNFa9950-IFNg9999+IL29990+
-
 TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
 
 for (quant in TNFa) {
@@ -94,106 +102,7 @@ rownames_popstats <- gsub("&", "", rownames_popstats)
 # Updates popstats rownames
 rownames(popstats_HVTN065) <- rownames_popstats
 
-@ 
-
-<<cytokine_quantile_classification, eval=FALSE>>=
-# Loop through each cytokine combination and construct matrix of features
-set.seed(42)
-
-# Extracts the population statistics for the markers upstream (i.e., the gates
-# before the cytokines)
-which_cytokines <- grep("cd[48]:", rownames_popstats)
-popstats_upstream <- popstats_HVTN065[-which_cytokines, ]
-
-TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
-
-cytokine_combinations <- expand.grid(TNFa = TNFa, IFNg = IFNg, IL2 = IL2,
-                                     stringsAsFactors = FALSE)
-# To speed up the processing, we use a combination of plyr and foreach.
-registerDoMC(12)
-results <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quantiles) {
-  TNFa <- paste0("TNFa", cyto_quantiles$TNFa)
-  IFNg <- paste0("IFNg", cyto_quantiles$IFNg)
-  IL2 <- paste0("IL2", cyto_quantiles$IL2)
-
-  # Constructs a lookup table for the current cytokine quantiles
-  cytokines <- c(TNFa, IFNg, IL2)
-  cytokines <- c(paste0("cd4:", cytokines), paste0("cd8:", cytokines))
-
-  # Constructs a lookup table of the cytokine doubles for the current quantile
-  # combination
-  cytokine_doubles <- polyfunction_nodes(c(IFNg, IL2))
-  cytokine_doubles <- c(paste0("cd4:", cytokine_doubles),
-                        paste0("cd8:", cytokine_doubles))
-
-  # Constructs a lookup table of the cytokine triples for the current quantile
-  # combination
-  cytokine_triples <- polyfunction_nodes(c(TNFa, IFNg, IL2))
-  cytokine_triples <- c(paste0("cd4:", cytokine_triples),
-                        paste0("cd8:", cytokine_triples))
-
-  # Extracts the population statistics for the current cytokine quantiles and
-  # combinations
-  popstats_cytokines <- popstats_HVTN065[which(rownames_popstats %in% cytokines), ]
-  popstats_doubles <- popstats_HVTN065[which(rownames_popstats %in% cytokine_doubles), ]
-  popstats_triples <- popstats_HVTN065[which(rownames_popstats %in% cytokine_triples), ]
-
-  # The population statistics upstream and the current cytokine quantiles
-  popstats_combo <- rbind(popstats_upstream, popstats_cytokines, popstats_doubles, popstats_triples)
-
-  classification_summary(popstats_combo, treatment_info)
-}, .parallel = TRUE)
-
-@ 
-
-<<classification_results, results='asis', eval=FALSE>>=
-
-# Extracts the classification accuracies for each cytokine combination.
-accuracy_results <- lapply(results, function(x) x$accuracy)
-accuracy_results <- do.call(rbind.data.frame, accuracy_results)
-
-accuracy_results <- cbind(cytokine_combinations, accuracy_results)
-rownames(accuracy_results) <- NULL
-
-m_accuracy <- melt(accuracy_results, variable.name = "Treatment_Stimulation",
-                   value.name = "Accuracy")
-m_accuracy$Treatment_Stimulation <- as.character(m_accuracy$Treatment_Stimulation)
-
-m_accuracy$Stimulation <- "GAG"
-m_accuracy$Stimulation <- with(m_accuracy,
-                               replace(Stimulation, grep("^ENV", Treatment_Stimulation), "ENV"))
-
-m_accuracy$Treatment <- "Treatment"
-m_accuracy$Treatment <- with(m_accuracy,
-                             replace(Treatment, grep("placebo", Treatment_Stimulation), "Placebo"))
-
-Cytokine_Combination <- dlply(m_accuracy, .(TNFa, IFNg, IL2), function(cyto_combo) {
-  cyto_combo <- as.numeric(c(cyto_combo$TNFa[1], cyto_combo$IFNg[1], cyto_combo$IL2[1])) / 1e4
-  paste(cyto_combo, collapse = "\n")
-})
-m_accuracy$Cytokine_Combination <- do.call(c, Cytokine_Combination)
-
-p <- ggplot(m_accuracy, aes(x = Cytokine_Combination, fill = Treatment))
-p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
-p <- p + facet_grid(Stimulation ~ .) + ylim(0, 1)
-p <- p + xlab("Cytokine Quantiles (TNFa, IFNg, IL2)") + ylab("Classification Accuracy")
-p + ggtitle("Cytokine-Quantile Classification Accuracy of Visit Numbers")
-
-# Extracts the classification accuracies for each cytokine combination.
-accuracy_results <- lapply(results, function(x) x$accuracy)
-accuracy_results <- do.call(rbind.data.frame, accuracy_results)
-
-cytokine_combinations <- apply(cytokine_combinations, 2, function(x) {
-  as.numeric(x) / 1e4
-})
-
-accuracy_results <- cbind(cytokine_combinations, accuracy_results)
-rownames(accuracy_results) <- NULL
-
-xtable(accuracy_results, digits = 4, caption = "Classification Results")
-@ 
-
-<<cytokine_quantile_classification_paired>>=
+#+ cytokine_quantile_classification_paired
 # Per Greg: "We also want to do this paired, using the difference in
 # classification probabilities for two samples from the same subject. i.e.
 # d = Pr(sample 1 from subject 1 = post-vaccine) - Pr(sample 2 from subject 1 = post-vaccine).
@@ -214,7 +123,7 @@ TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
 cytokine_combinations <- expand.grid(TNFa = TNFa, IFNg = IFNg, IL2 = IL2,
                                      stringsAsFactors = FALSE)
 # To speed up the processing, we use a combination of plyr and foreach.
-registerDoMC(12)
+registerDoMC(2)
 results_paired <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quantiles) {
   TNFa <- paste0("TNFa", cyto_quantiles$TNFa)
   IFNg <- paste0("IFNg", cyto_quantiles$IFNg)
@@ -250,9 +159,8 @@ results_paired <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto
                                 prob_threshold = 0)
 }, .parallel = TRUE)
 
-@ 
 
-<<classification_results_paired, results='asis'>>=
+#+ classification_results_paired, results='asis'
 
 # Extracts the classification accuracies for each cytokine combination.
 accuracy_results <- lapply(results_paired, function(x) x$accuracy)
@@ -297,13 +205,13 @@ accuracy_results <- cbind(cytokine_combinations, accuracy_results)
 rownames(accuracy_results) <- NULL
 
 xtable(accuracy_results, digits = 4, caption = "Classification Results")
-@ 
+ 
 
-<<top_results_summary>>=
-# We summarize the results for the top 3 cytokine-quantile combinations for each
-# stimulation group.
-# We choose the top 3 to be the largest differences in the classification
-# accuracies between the treatment and placebo groups.
+#+ top_results_summary
+#' We summarize the results for the top 3 cytokine-quantile combinations for each
+#' stimulation group.
+#' We choose the top 3 to be the largest differences in the classification
+#' accuracies between the treatment and placebo groups.
 seq_top <- seq_len(3)
 
 accuracy_results <- ddply(accuracy_results, .(TNFa, IFNg, IL2), transform,
@@ -316,11 +224,9 @@ which_ENV_top <- order(accuracy_results$diff_ENV, decreasing = TRUE)[seq_top]
 GAG_top <- accuracy_results[which_GAG_top, ]
 ENV_top <- accuracy_results[which_ENV_top, ]
 
-@ 
-
-<<top_markers_summary, results="asis">>=
-# For the top 3 cytokine-quantile combinations from each stimulation group, we
-# provide the markers that were selected by 'glmnet'.
+#+ top_markers_summary, results="asis"
+#' For the top 3 cytokine-quantile combinations from each stimulation group, we
+#' provide the markers that were selected by 'glmnet'.
 
 GAG_top_markers <- lapply(seq_top, function(i) {
   combo <- GAG_top[i,]
@@ -346,15 +252,11 @@ xtable_out <- xtable(ENV_top_markers, digits = 4,
                      caption = "Markers Selected by {\tt glmnet} for Top 3 ENV Cytokine-Quantile Combinations")
 print(xtable_out, include.rownames = FALSE)
 
-@ 
-
-<<top_markers_proportions, eval=FALSE>>=
+ 
+#+ top_markers_proportions, eval=FALSE
 
 # TODO: Move code from 'summary-HVTN065.Rnw' to here to summarize proportions
 
-# We prettify the population stats, so that they have a reduced number of nodes
-# in the output.
-popstats_HVTN065 <- pretty_popstats(popstats_HVTN065, nodes = 4)
 m_pop_stats <- melt(popstats_HVTN065)
 colnames(m_pop_stats) <- c("Marker", "Sample", "Proportion")
 m_pop_stats$Marker <- as.character(m_pop_stats$Marker)
@@ -397,9 +299,9 @@ treatment_info <- data.frame(PTID = gsub("-", "", as.character(treatment.HVTN065
 treatment_info$Treatment <- replace(treatment_info$Treatment, grep("^Placebo", treatment.HVTN065$rx), "Placebo")
 
 prop_summary <- plyr::join(prop_summary, treatment_info)
-@ 
+ 
 
-<<proportions_by_treatment, eval=FALSE>>=
+#+ proportions_by_treatment, eval=FALSE
 p <- ggplot(subset(prop_summary, marker_group == "Other"), aes(x = VISITNO, y = avg_prop))
 p <- p + geom_boxplot(aes(fill = Treatment)) + scale_x_discrete(labels = c("Pre", "Post"))
 p <- p + facet_wrap( ~ Marker, scale = "free")
@@ -415,11 +317,11 @@ p <- p + geom_boxplot(aes(fill = Treatment)) + scale_x_discrete(labels = c("Pre"
 p <- p + facet_wrap( ~ Marker, scale = "free")
 p + xlab("Vaccination Status") + ylab("Average Proportion Across Stimulation Groups") + ggtitle('CD8 Cytokines')
 
-@ 
+ 
  
 
 
-<<ROC, eval=FALSE>>=
+#+ ROC, eval=FALSE
 
 # We use the 'ROCR' package to construct ROC curves for each of the GAG and ENV
 # stimulations.
@@ -465,9 +367,9 @@ p + geom_line(aes(linetype = Stimulation)) + ggtitle("ROC Curve by Stimulation")
 p <- ggplot(stim_cutoffs, aes(x = Cutoff, y = Accuracy, color = Stimulation))
 p + geom_line(aes(linetype = Stimulation)) + ggtitle("Accuracy by Probability Threshold")
 
-@ 
+ 
 
-<<manual_gates, eval=FALSE>>=
+#+ manual_gates, eval=FALSE
 
 HVTN065_manual_gates <- subset(HVTN065_manual_gates, ANTIGEN %in% c("ENV-1-PTEG", "GAG-1-PTEG", "negctrl"))
 HVTN065_manual_gates <- subset(HVTN065_manual_gates, PTID %in% levels(m_pop_stats$PTID))
@@ -540,13 +442,5 @@ manual_proportions <- ddply(manual_counts, .(PTID, VISITNO, ANTIGEN), function(x
 #   After we have the full information, build a classifier for the manual proportions.
 
 
-@ 
+ 
 
-
-
-
-
-
-
-
-\end{document}
