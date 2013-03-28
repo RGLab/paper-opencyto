@@ -35,13 +35,12 @@ no_commas <- function(x) {
 
 #' Constructs a vector of all the combinations of A & B & C
 #'
-#' The \code{permutations} function is from the \code{gregmisc} package on CRAN.
+#' The \code{permutations} function is from the \code{gtools} package on CRAN.
 #' @param markers character vector of marker names
 #' @return vector containing all combinations of the markers
 #' @examples
 #' polyfunction_nodes(c("IFNg", "IL2", "TNFa", "GzB", "CD57"))
 polyfunction_nodes <- function(markers) {
-  require('gregmisc')
   num_markers <- length(markers)
   plusminus_list <- permutations(n = 2, r = num_markers, c("+", "-"),
                                  repeats = TRUE)
