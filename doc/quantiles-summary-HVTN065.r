@@ -207,11 +207,11 @@ rownames(accuracy_results) <- NULL
 xtable(accuracy_results, digits = 4, caption = "Classification Results")
  
 
-#+ top_results_summary
 #' We summarize the results for the top 3 cytokine-quantile combinations for each
-#' stimulation group.
-#' We choose the top 3 to be the largest differences in the classification
-#' accuracies between the treatment and placebo groups.
+#' stimulation group. We choose the top 3 to be the largest differences in the
+#' classification accuracies between the treatment and placebo groups.
+
+#+ top_results_summary
 seq_top <- seq_len(3)
 
 accuracy_results <- ddply(accuracy_results, .(TNFa, IFNg, IL2), transform,
@@ -224,9 +224,10 @@ which_ENV_top <- order(accuracy_results$diff_ENV, decreasing = TRUE)[seq_top]
 GAG_top <- accuracy_results[which_GAG_top, ]
 ENV_top <- accuracy_results[which_ENV_top, ]
 
-#+ top_markers_summary, results="asis"
 #' For the top 3 cytokine-quantile combinations from each stimulation group, we
 #' provide the markers that were selected by 'glmnet'.
+
+#+ top_markers_summary, results="asis"
 
 GAG_top_markers <- lapply(seq_top, function(i) {
   combo <- GAG_top[i,]
@@ -251,75 +252,6 @@ print(xtable_out, include.rownames = FALSE)
 xtable_out <- xtable(ENV_top_markers, digits = 4,
                      caption = "Markers Selected by {\tt glmnet} for Top 3 ENV Cytokine-Quantile Combinations")
 print(xtable_out, include.rownames = FALSE)
-
- 
-#+ top_markers_proportions, eval=FALSE
-
-# TODO: Move code from 'summary-HVTN065.Rnw' to here to summarize proportions
-
-m_pop_stats <- melt(popstats_HVTN065)
-colnames(m_pop_stats) <- c("Marker", "Sample", "Proportion")
-m_pop_stats$Marker <- as.character(m_pop_stats$Marker)
-m_pop_stats <- subset(m_pop_stats, Marker != "root")
-
-colnames(pData_HVTN065) <- c("Sample", "PTID", "Stimulation", "VISITNO")
-m_pop_stats <- plyr:::join(m_pop_stats, pData_HVTN065, by = "Sample")
-m_pop_stats$VISITNO <- factor(m_pop_stats$VISITNO)
-m_pop_stats$PTID <- factor(m_pop_stats$PTID)
-
-# We stored the 'negctrl' with sample numbers appended to the strings so that
-# plotGate could identify unique samples. Here, we strip the sample numbers to
-# summarize the negative controls as a whole.
-m_pop_stats$Stimulation <- with(m_pop_stats, replace(Stimulation, grep("^negctrl", Stimulation), "negctrl"))
-
-# Summarizes the proportions for each marker.
-summary_by_marker <- ddply(m_pop_stats, .(Marker, Stimulation, VISITNO), summarize,
-                           CV = sd(Proportion) / mean(Proportion))
-
-# For each patient, we average the proportions across stimulation groups for each visit number.
-# This produces a cleaner summary of the difference in proportions between visits 2 and 12 across patients.
-prop_summary <- ddply(m_pop_stats, .(Marker, PTID, VISITNO), summarize, avg_prop = mean(Proportion))
-
-prop_summary$marker_group <- "Other"
-prop_summary$marker_group <- with(prop_summary,
-                                  replace(marker_group, grep("cd4/", Marker), "CD4"))
-prop_summary$marker_group <- with(prop_summary,
-                                  replace(marker_group, grep("cd8/", Marker), "CD8"))
-
-# Now, we clean up the marker names.
-prop_summary$Marker <- gsub(pattern = "!cd[48]/", replace = "!", x = prop_summary$Marker)
-markers_split <- strsplit(prop_summary$Marker, split = "&")
-prop_summary$Marker <- sapply(markers_split, function(marker_split) {
-  paste(sapply(strsplit(marker_split, split = "/"), tail, n = 1), collapse = "&")
-})
-
-# Adds treatment group information to the proportion summary
-treatment_info <- data.frame(PTID = gsub("-", "", as.character(treatment.HVTN065$Ptid)),
-                             Treatment = "Treatment", stringsAsFactors = FALSE)
-treatment_info$Treatment <- replace(treatment_info$Treatment, grep("^Placebo", treatment.HVTN065$rx), "Placebo")
-
-prop_summary <- plyr::join(prop_summary, treatment_info)
- 
-
-#+ proportions_by_treatment, eval=FALSE
-p <- ggplot(subset(prop_summary, marker_group == "Other"), aes(x = VISITNO, y = avg_prop))
-p <- p + geom_boxplot(aes(fill = Treatment)) + scale_x_discrete(labels = c("Pre", "Post"))
-p <- p + facet_wrap( ~ Marker, scale = "free")
-p + xlab("Vaccination Status") + ylab("Average Proportion Across Stimulation Groups")
-
-p <- ggplot(subset(prop_summary, marker_group == "CD4"), aes(x = VISITNO, y = avg_prop))
-p <- p + geom_boxplot(aes(fill = Treatment)) + scale_x_discrete(labels = c("Pre", "Post"))
-p <- p + facet_wrap( ~ Marker, scale = "free")
-p + xlab("Vaccination Status") + ylab("Average Proportion Across Stimulation Groups") + ggtitle('CD4 Cytokines')
-
-p <- ggplot(subset(prop_summary, marker_group == "CD8"), aes(x = VISITNO, y = avg_prop))
-p <- p + geom_boxplot(aes(fill = Treatment)) + scale_x_discrete(labels = c("Pre", "Post"))
-p <- p + facet_wrap( ~ Marker, scale = "free")
-p + xlab("Vaccination Status") + ylab("Average Proportion Across Stimulation Groups") + ggtitle('CD8 Cytokines')
-
- 
- 
-
 
 #+ ROC, eval=FALSE
 
