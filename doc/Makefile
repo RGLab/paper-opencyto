@@ -6,13 +6,13 @@
 # http://www.stat.auckland.ac.nz/~stat782/downloads/make-tutorial.pdf
 
 # Put all PDF targets here, separated by spaces.
-PDFS= quantiles-summary-HVTN065.pdf
-#PDFS= quantiles-summary-HVTN065.pdf gates-HVTN065.pdf summary-HVTN065.pdf gates-HVTN080.pdf summary-HVTN080.pdf
+REPORTS= quantiles-summary-HVTN065.html
 
-all: $(PDFS) 
+all: $(REPORTS) 
 
 clean:
-	rm -f *.bbl *.blg *.aux *.out *.log *.spl *tikzDictionary demo*
+	rm -f *.bbl *.blg *.aux *.out *.log *.spl *tikzDictionary demo* *.md *.Rmd
 
-%.pdf: %.Rnw
-	R -e "library(knitr); knit2pdf('$*.Rnw')"
+%.html: %.r
+	R -e "library(knitr); spin('$*.r')"
+
