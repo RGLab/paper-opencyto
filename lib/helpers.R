@@ -134,7 +134,6 @@ classification_summary <- function(popstats, treatment_info, train_pct = 0.6, pa
   GAG_placebo_data <- subset(GAG_data, Treatment == "Placebo", select = -Treatment)
   GAG_treatment_data <- subset(GAG_data, Treatment == "Treatment", select = -Treatment)
 
-
   # Partitions ENV data for classification study
   ENV_treated_patients <- unique(ENV_treatment_data$PTID)
   num_ENV_treated_patients <- length(ENV_treated_patients)
@@ -191,7 +190,7 @@ classification_summary <- function(popstats, treatment_info, train_pct = 0.6, pa
                                                  s = "lambda.min", type = "response"))
     GAG_predictions_placebo <- as.vector(predict(GAG_glmnet_cv, GAG_placebo_x,
                                                  s = "lambda.min", type = "response"))
-    
+   
     # If the difference in classification probabilities exceeds the probability
     # threshold, we assign the first sample as visit 2 and the second as visit 12.
     # Otherwise, we assign the first sample as visit 12 and the second as visit 2.
@@ -253,6 +252,8 @@ classification_summary <- function(popstats, treatment_info, train_pct = 0.6, pa
   
   # Determines which features should be kept for classification
   # If present, we manually remove the "(Intercept)"
+  # In the case that all markers are removed and only the intercept remains, we
+  # add the "(Intercept)" back, for clarity.
   ENV_coef_glmnet <- coef(ENV_glmnet_cv)
   ENV_markers_kept <- rownames(ENV_coef_glmnet)[as.vector(ENV_coef_glmnet) != 0]
   ENV_markers_kept <- ENV_markers_kept[!grepl("(Intercept)", ENV_markers_kept)]
@@ -267,10 +268,23 @@ classification_summary <- function(popstats, treatment_info, train_pct = 0.6, pa
     GAG_markers_kept <- "(Intercept)"
   }
 
-  list(accuracy = list(GAG_treatment = GAG_accuracy_treated,
-         GAG_placebo = GAG_accuracy_placebo, ENV_treatment = ENV_accuracy_treated,
-         ENV_placebo = ENV_accuracy_placebo),
-       markers = list(GAG = GAG_markers_kept, ENV = ENV_markers_kept))
+  out <- list(accuracy = list(GAG_treatment = GAG_accuracy_treated,
+                GAG_placebo = GAG_accuracy_placebo,
+                ENV_treatment = ENV_accuracy_treated,
+                ENV_placebo = ENV_accuracy_placebo),
+              markers = list(GAG = GAG_markers_kept, ENV = ENV_markers_kept))
+  if (paired) {
+    # We return the classification probabilities from 'glmnet' and the
+    # corresponding test data sets for further analysis (e.g., ROC curves)
+    out$classification_probs <- list(GAG_treated = GAG_predictions_treated,
+      GAG_placebo = GAG_predictions_placebo,
+      ENV_treated = ENV_predictions_treated,
+      ENV_placebo = ENV_predictions_placebo)
+    out$test_data <- list(GAG_treated = GAG_test_data,
+      GAG_placebo = GAG_placebo_data, ENV_treated = ENV_test_data,
+      ENV_placebo = ENV_placebo_data)
+  }
+  out
 }
 
 

@@ -194,17 +194,18 @@ p <- p + xlab("Cytokine Quantiles (TNFa, IFNg, IL2)") + ylab("Classification Acc
 p + ggtitle("Cytokine-Quantile Classification Accuracy of Visit Numbers Paired by Patient")
 
 # Extracts the classification accuracies for each cytokine combination.
-accuracy_results <- lapply(results, function(x) x$accuracy)
+accuracy_results <- lapply(results_paired, function(x) x$accuracy)
 accuracy_results <- do.call(rbind.data.frame, accuracy_results)
 
-cytokine_combinations <- apply(cytokine_combinations, 2, function(x) {
+cytokine_combinations_numeric <- apply(cytokine_combinations, 2, function(x) {
   as.numeric(x) / 1e4
 })
 
-accuracy_results <- cbind(cytokine_combinations, accuracy_results)
-rownames(accuracy_results) <- NULL
+accuracy_results_numeric <- cbind(cytokine_combinations_numeric, accuracy_results)
+rownames(accuracy_results_numeric) <- NULL
 
-xtable(accuracy_results, digits = 4, caption = "Classification Results")
+print(xtable(accuracy_results_numeric, digits = 4,
+             caption = "Classification Results"), type = "html")
  
 
 #' We summarize the results for the top 3 cytokine-quantile combinations for each
@@ -230,7 +231,7 @@ ENV_top <- accuracy_results[which_ENV_top, ]
 #+ top_markers_summary, results="asis"
 
 GAG_top_markers <- lapply(seq_top, function(i) {
-  combo <- GAG_top[i,]
+  combo <- GAG_top[i, ]
   markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]$markers$GAG
   strip_quantiles(markers, quantiles = c("9950", "9990", "9999"))
 })
@@ -238,22 +239,22 @@ GAG_top_markers <- do.call(rbind, lapply(GAG_top_markers, paste, collapse = ", "
 GAG_top_markers <- cbind.data.frame(cytokine_combinations[which_GAG_top, ], Markers = GAG_top_markers)
 
 ENV_top_markers <- lapply(seq_top, function(i) {
-  combo <- ENV_top[i,]
+  combo <- ENV_top[i, ]
   markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]$markers$ENV
   strip_quantiles(markers, quantiles = c("9950", "9990", "9999"))
 })
 ENV_top_markers <- do.call(rbind, lapply(ENV_top_markers, paste, collapse = ", "))
 ENV_top_markers <- cbind.data.frame(cytokine_combinations[which_ENV_top, ], Markers = ENV_top_markers)
 
-xtable_out <- xtable(GAG_top_markers, digits = 4,
+GAG_xtable <- xtable(GAG_top_markers, digits = 4,
                      caption = "Markers Selected by {\tt glmnet} for Top 3 GAG Cytokine-Quantile Combinations")
-print(xtable_out, include.rownames = FALSE)
+print(GAG_xtable, include.rownames = FALSE, type = "html")
 
-xtable_out <- xtable(ENV_top_markers, digits = 4,
+ENV_xtable <- xtable(ENV_top_markers, digits = 4,
                      caption = "Markers Selected by {\tt glmnet} for Top 3 ENV Cytokine-Quantile Combinations")
-print(xtable_out, include.rownames = FALSE)
+print(ENV_xtable, include.rownames = FALSE, type = "html")
 
-#+ ROC, eval=FALSE
+#+ ROC
 
 # We use the 'ROCR' package to construct ROC curves for each of the GAG and ENV
 # stimulations.
@@ -302,7 +303,6 @@ p + geom_line(aes(linetype = Stimulation)) + ggtitle("Accuracy by Probability Th
  
 
 #+ manual_gates, eval=FALSE
-
 HVTN065_manual_gates <- subset(HVTN065_manual_gates, ANTIGEN %in% c("ENV-1-PTEG", "GAG-1-PTEG", "negctrl"))
 HVTN065_manual_gates <- subset(HVTN065_manual_gates, PTID %in% levels(m_pop_stats$PTID))
 HVTN065_manual_gates <- subset(HVTN065_manual_gates, VISITNO %in% c(2, 12))
