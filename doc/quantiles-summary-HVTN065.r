@@ -152,7 +152,7 @@ TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
 cytokine_combinations <- expand.grid(TNFa = TNFa, IFNg = IFNg, IL2 = IL2,
                                      stringsAsFactors = FALSE)
 # To speed up the processing, we use a combination of plyr and foreach.
-registerDoMC(2)
+registerDoMC(12)
 results_paired <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quantiles) {
   TNFa <- paste0("TNFa", cyto_quantiles$TNFa)
   IFNg <- paste0("IFNg", cyto_quantiles$IFNg)
@@ -222,7 +222,10 @@ p <- ggplot(m_accuracy, aes(x = Cytokine_Combination, fill = Treatment))
 p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
 p <- p + facet_grid(Stimulation ~ .) + ylim(0, 1)
 p <- p + xlab("Cytokine Quantiles (TNFa, IFNg, IL2)") + ylab("Classification Accuracy")
-p + ggtitle("Cytokine-Quantile Classification Accuracy of Visit Numbers Paired by Patient")
+p <- p + ggtitle("Cytokine-Quantile Classification Accuracy of Visit Numbers Paired by Patient") + theme_bw()
+p <- p + opts(plot.title  = theme_text(size = 18))
+p <- p + theme(strip.text.y = element_text(size = 14))
+p + theme(axis.text = element_text(size = 12)) + theme(axis.title = element_text(size = 16))
 
 #+ classification_results_table, results='asis'
 
@@ -239,7 +242,7 @@ rownames(accuracy_results_numeric) <- NULL
 
 print(xtable(accuracy_results_numeric, digits = 4), include.rownames = FALSE, type = "html")
  
-#' ## Top 3 Markers from Each Stimulation Group
+#' ## Markers for Top 3 Quantile Combinations for Each Stimulation Group
 #'
 #' We summarize the results for the top 3 cytokine-quantile combinations for each
 #' stimulation group. We choose the top 3 to be the largest differences in the
@@ -248,6 +251,7 @@ print(xtable(accuracy_results_numeric, digits = 4), include.rownames = FALSE, ty
 #+ top_markers_summary
 seq_top <- seq_len(3)
 
+accuracy_results <- cbind(cytokine_combinations, accuracy_results)
 accuracy_results <- ddply(accuracy_results, .(TNFa, IFNg, IL2), transform,
                           diff_GAG = GAG_treatment - GAG_placebo,
                           diff_ENV = ENV_treatment - ENV_placebo)
@@ -278,19 +282,17 @@ ENV_top_markers <- do.call(rbind, lapply(ENV_top_markers, paste, collapse = ", "
 ENV_top_markers <- cbind.data.frame(cytokine_combinations[which_ENV_top, ], Markers = ENV_top_markers)
 
 
-#+ top_markers_summary_tables, results='asis'
+#' ### Markers Selected by `glmnet` for Top 3 GAG Cytokine-Quantile Combinations
+#+ markers_top3_GAG, results='asis'
+print(xtable(GAG_top_markers, digits = 4), include.rownames = FALSE, type = "html")
 
-GAG_xtable <- xtable(GAG_top_markers, digits = 4,
-                     caption = "Markers Selected by 'glmnet' for Top 3 GAG Cytokine-Quantile Combinations")
-print(GAG_xtable, include.rownames = FALSE, type = "html", comment = FALSE)
-
-ENV_xtable <- xtable(ENV_top_markers, digits = 4,
-                     caption = "Markers Selected by 'glmnet' for Top 3 ENV Cytokine-Quantile Combinations")
-print(ENV_xtable, include.rownames = FALSE, type = "html", comment = FALSE)
+#' ### Markers Selected by `glmnet` for Top 3 ENV Cytokine-Quantile Combinations
+#+ markers_top3_ENV, results='asis'
+print(xtable(ENV_top_markers, digits = 4), include.rownames = FALSE, type = "html")
 
 #+ accuracy_by_thresholds
 
-prob_thresholds <- seq(-0.25, 0.25, by = 0.01)
+prob_thresholds <- seq(0, 0.5, by = 0.01)
 
 #' ### GAG Classification Accuracy by Probability Thresholds
 
@@ -349,8 +351,12 @@ colnames(m_GAG_thresh) <- c("Threshold", "Treatment", "Accuracy", "Quantile_Comb
 m_GAG_thresh$Threshold <- as.numeric(as.character(m_GAG_thresh$Threshold))
 
 p <- ggplot(m_GAG_thresh, aes(x = Threshold, y = Accuracy, color = Treatment, linetype = Treatment))
-p <- p + geom_line() + facet_wrap(~ Quantile_Combo)
-p + ggtitle("Classification Accuracy by Probability Threshold - GAG Stimulation")
+p <- p + geom_line(size = 2) + facet_wrap(~ Quantile_Combo)
+p <- p + ggtitle("Classification Accuracy by Probability Threshold - GAG Stimulation") + theme_bw()
+p <- p + opts(legend.title = theme_text(size = 14)) + opts(legend.text = theme_text(size = 12))
+p <- p + opts(plot.title  = theme_text(size = 18)) + theme(strip.text.x = element_text(size = 14))
+p <- p + theme(axis.text = element_text(size = 12)) + theme(axis.title = element_text(size = 16))
+p + xlab("Probability Threshold")
 
 
 #' ### ENV Classification Accuracy by Probability Thresholds
@@ -410,9 +416,12 @@ colnames(m_ENV_thresh) <- c("Threshold", "Treatment", "Accuracy", "Quantile_Comb
 m_ENV_thresh$Threshold <- as.numeric(as.character(m_ENV_thresh$Threshold))
 
 p <- ggplot(m_ENV_thresh, aes(x = Threshold, y = Accuracy, color = Treatment, linetype = Treatment))
-p <- p + geom_line() + facet_wrap(~ Quantile_Combo)
-p + ggtitle("Classification Accuracy by Probability Threshold - ENV Stimulation")
-
+p <- p + geom_line(size = 2) + facet_wrap(~ Quantile_Combo)
+p <- p + ggtitle("Classification Accuracy by Probability Threshold - ENV Stimulation") + theme_bw()
+p <- p + opts(legend.title = theme_text(size = 14)) + opts(legend.text = theme_text(size = 12))
+p <- p + opts(plot.title  = theme_text(size = 18)) + theme(strip.text.x = element_text(size = 14))
+p <- p + theme(axis.text = element_text(size = 12)) + theme(axis.title = element_text(size = 16))
+p + xlab("Probability Threshold")
 
 
 #+ manual_gates, eval=FALSE
