@@ -1,4 +1,5 @@
 #' # Classification Study - HVTN065
+#'
 
 #' In this document we conduct a classification study based on the automated
 #' gating results from the `OpenCyto` R package applied to the HVTN065 data set.
@@ -26,8 +27,9 @@
 
 #+ setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE
 opts_chunk$set(fig.align = 'default', dev = 'png', message = FALSE, warning = FALSE,
-               cache = FALSE, echo = FALSE, fig.path = 'figure/HVTN065-',
-               cache.path = 'cache/HVTN065-', out.width = "7.5in", out.height = "9.25in")
+               cache = TRUE, echo = FALSE, fig.path = 'figure/HVTN065-',
+               cache.path = 'cache/HVTN065-', fig.width = 18, fig.height = 18,
+               autodep = TRUE)
 
 #+ load_data  
 setwd("..")
@@ -102,6 +104,33 @@ rownames_popstats <- gsub("&", "", rownames_popstats)
 # Updates popstats rownames
 rownames(popstats_HVTN065) <- rownames_popstats
 
+#' ## Classification Accuracies of Visit Times Paired by Patients
+#'
+#' ## Summary of Simulation Design
+#' For each cytokine-quantile combination, we estimate classification accuracies
+#' using the following scheme:
+#'
+#' First, we partition the HVTN065 patients by their treatment status into a
+#' treatment group and placebo group. Of the patients in the treatment group, we
+#' randomly partition 60% of the them into a training data set and the remaining
+#' 40% of the patients into a test data set. For the given cytokine quantiles,
+#' we utilize the `glmnet` package to build a classifier from the population
+#' proportions for the markers and the polyfunctional gates obtained using the
+#' `OpenCyto` package. Next, because there are two visits (i.e., pre- and
+#' post-vaccine) for each patient, we pair the visits in the test data set by
+#' patient. For each patient-visit pairing, we classify the two samples
+#' and calculate the difference in their classification probabilities. Let
+#' d = Pr(sample 1 from subject 1 = post-vaccine) - Pr(sample 2 from subject 1 = post-vaccine).
+#' For a given probability threshold, if $d > threshold$, then we classify sample
+#' 1 as post-vaccine and sample 2 as pre-vaccine. Otherwise, if $d < threshold$,
+#' we classify sample 1 as pre-vaccine and sample 2 as post-vaccine. We calculate
+#' the classification accuracy as the number of correctly classified patients. In
+#' the same manner we calculate the classification accuracy using the placebo
+#' patients as a separate test data set.
+#'
+#' We present both a graphical and tabular summary of the results.
+#'
+
 #+ cytokine_quantile_classification_paired
 # Per Greg: "We also want to do this paired, using the difference in
 # classification probabilities for two samples from the same subject. i.e.
@@ -155,12 +184,12 @@ results_paired <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto
   popstats_combo <- rbind(popstats_upstream, popstats_cytokines, popstats_doubles,
                           popstats_triples)
 
-  classification_summary(popstats_combo, treatment_info, paired = TRUE,
-                                prob_threshold = 0)
+  classification_summary(popstats_combo, treatment_info, pdata = pData_HVTN065,
+                         paired = TRUE, prob_threshold = 0)
 }, .parallel = TRUE)
 
 
-#+ classification_results_paired, results='asis'
+#+ classification_results_paired
 
 # Extracts the classification accuracies for each cytokine combination.
 accuracy_results <- lapply(results_paired, function(x) x$accuracy)
@@ -187,11 +216,15 @@ Cytokine_Combination <- dlply(m_accuracy, .(TNFa, IFNg, IL2), function(cyto_comb
 })
 m_accuracy$Cytokine_Combination <- do.call(c, Cytokine_Combination)
 
+#+ classification_results_figure, results='asis'
+
 p <- ggplot(m_accuracy, aes(x = Cytokine_Combination, fill = Treatment))
 p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
 p <- p + facet_grid(Stimulation ~ .) + ylim(0, 1)
 p <- p + xlab("Cytokine Quantiles (TNFa, IFNg, IL2)") + ylab("Classification Accuracy")
 p + ggtitle("Cytokine-Quantile Classification Accuracy of Visit Numbers Paired by Patient")
+
+#+ classification_results_table, results='asis'
 
 # Extracts the classification accuracies for each cytokine combination.
 accuracy_results <- lapply(results_paired, function(x) x$accuracy)
@@ -204,15 +237,15 @@ cytokine_combinations_numeric <- apply(cytokine_combinations, 2, function(x) {
 accuracy_results_numeric <- cbind(cytokine_combinations_numeric, accuracy_results)
 rownames(accuracy_results_numeric) <- NULL
 
-print(xtable(accuracy_results_numeric, digits = 4,
-             caption = "Classification Results"), type = "html")
+print(xtable(accuracy_results_numeric, digits = 4), include.rownames = FALSE, type = "html")
  
-
+#' ## Top 3 Markers from Each Stimulation Group
+#'
 #' We summarize the results for the top 3 cytokine-quantile combinations for each
 #' stimulation group. We choose the top 3 to be the largest differences in the
 #' classification accuracies between the treatment and placebo groups.
 
-#+ top_results_summary
+#+ top_markers_summary
 seq_top <- seq_len(3)
 
 accuracy_results <- ddply(accuracy_results, .(TNFa, IFNg, IL2), transform,
@@ -227,8 +260,6 @@ ENV_top <- accuracy_results[which_ENV_top, ]
 
 #' For the top 3 cytokine-quantile combinations from each stimulation group, we
 #' provide the markers that were selected by 'glmnet'.
-
-#+ top_markers_summary, results="asis"
 
 GAG_top_markers <- lapply(seq_top, function(i) {
   combo <- GAG_top[i, ]
@@ -246,61 +277,143 @@ ENV_top_markers <- lapply(seq_top, function(i) {
 ENV_top_markers <- do.call(rbind, lapply(ENV_top_markers, paste, collapse = ", "))
 ENV_top_markers <- cbind.data.frame(cytokine_combinations[which_ENV_top, ], Markers = ENV_top_markers)
 
+
+#+ top_markers_summary_tables, results='asis'
+
 GAG_xtable <- xtable(GAG_top_markers, digits = 4,
-                     caption = "Markers Selected by {\tt glmnet} for Top 3 GAG Cytokine-Quantile Combinations")
-print(GAG_xtable, include.rownames = FALSE, type = "html")
+                     caption = "Markers Selected by 'glmnet' for Top 3 GAG Cytokine-Quantile Combinations")
+print(GAG_xtable, include.rownames = FALSE, type = "html", comment = FALSE)
 
 ENV_xtable <- xtable(ENV_top_markers, digits = 4,
-                     caption = "Markers Selected by {\tt glmnet} for Top 3 ENV Cytokine-Quantile Combinations")
-print(ENV_xtable, include.rownames = FALSE, type = "html")
+                     caption = "Markers Selected by 'glmnet' for Top 3 ENV Cytokine-Quantile Combinations")
+print(ENV_xtable, include.rownames = FALSE, type = "html", comment = FALSE)
 
-#+ ROC
+#+ accuracy_by_thresholds
 
-# We use the 'ROCR' package to construct ROC curves for each of the GAG and ENV
-# stimulations.
-ENV_probs <- 1 - as.vector(predict(ENV_glmnet_cv, ENV_test_x, s = "lambda.min", type = "response"))
-ENV_prediction <- prediction(ENV_probs, ENV_test_y)
-ENV_performance <- performance(ENV_prediction, "tpr", "fpr")
-ENV_cutoffs <- performance(ENV_prediction, "acc")
+prob_thresholds <- seq(-0.25, 0.25, by = 0.01)
 
-GAG_probs <- 1 - as.vector(predict(GAG_glmnet_cv, GAG_test_x, s = "lambda.min", type = "response"))
-GAG_prediction <- prediction(GAG_probs, GAG_test_y)
-GAG_performance <- performance(GAG_prediction, "tpr", "fpr")
-GAG_cutoffs <- performance(GAG_prediction, "acc")
+#' ### GAG Classification Accuracy by Probability Thresholds
 
-# Next, we combine the ROC curves for each stimulation to construct a singlet
-# ggplot2 figure to plot the False Positive Rate vs True Positive Rate.
-stim_performance <- rbind.data.frame(
-  cbind(ENV_performance@x.values[[1]], ENV_performance@y.values[[1]], "ENV"),
-  cbind(GAG_performance@x.values[[1]], GAG_performance@y.values[[1]], "GAG")
-)
-colnames(stim_performance) <- c("FPR", "TPR", "Stimulation")
-stim_performance$FPR <- as.numeric(as.character(stim_performance$FPR))
-stim_performance$TPR <- as.numeric(as.character(stim_performance$TPR))
+#+ GAG_threshold_plot
 
-# Next, we combine the ROC curves for each stimulation to construct a singlet
-# ggplot2 figure to plot the False Positive Rate vs True Positive Rate.
-stim_cutoffs <- rbind.data.frame(
-  cbind(ENV_cutoffs@x.values[[1]], ENV_cutoffs@y.values[[1]], "ENV"),
-  cbind(GAG_cutoffs@x.values[[1]], GAG_cutoffs@y.values[[1]], "GAG")
-)
-colnames(stim_cutoffs) <- c("Cutoff", "Accuracy", "Stimulation")
-stim_cutoffs$Cutoff <- as.numeric(as.character(stim_cutoffs$Cutoff))
-stim_cutoffs$Accuracy <- as.numeric(as.character(stim_cutoffs$Accuracy))
+GAG_accuracy_threshold <- lapply(seq_top, function(i) {
+  combo <- GAG_top[i, ]
+  results_markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]
+
+  # Extracts PTID and VISITNO from the test data used in the classification study
+  # for both the treatment and placebo groups
+  test_treated <- subset(results_markers$test_data$GAG_treated, select = c(PTID, VISITNO))
+  test_placebo <- subset(results_markers$test_data$GAG_placebo, select = c(PTID, VISITNO))
+
+  # Classification probabilities for treatment and placebo groups
+  probs_treated <- results_markers$classification_probs$GAG_treated
+  probs_placebo <- results_markers$classification_probs$GAG_placebo
+
+  accuracy_threshold <- lapply(prob_thresholds, function(threshold) {
+    correct_treated <- tapply(seq_along(test_treated$PTID), test_treated$PTID, function(i) {
+      if (diff(probs_treated[i]) > threshold) {
+        classification <- c("2", "12")
+      } else {
+        classification <- c("12", "2")
+      }
+      all(classification == test_treated$VISITNO[i])
+    })
+    treated_accuracy <- mean(correct_treated)
+
+    correct_placebo <- tapply(seq_along(test_placebo$PTID), test_placebo$PTID, function(i) {
+      if (diff(probs_placebo[i]) > threshold) {
+        classification <- c("2", "12")
+      } else {
+        classification <- c("12", "2")
+      }
+      all(classification == test_placebo$VISITNO[i])
+    })
+    placebo_accuracy <- mean(correct_placebo)
+
+    list(Treated = treated_accuracy, Placebo = placebo_accuracy)
+  })
+  accuracy_threshold <- do.call(rbind, accuracy_threshold)
+  list(markers = subset(combo, select = c(TNFa, IFNg, IL2)),
+       accuracy_threshold = cbind.data.frame(Threshold = as.factor(prob_thresholds),
+         accuracy_threshold))
+})
+
+GAG_markers <- sapply(GAG_accuracy_threshold, function(x) {
+  paste0(c("TNFa", "IFNg", "IL2"), x$markers, collapse = ":")
+})
+
+GAG_accuracy_threshold <- lapply(GAG_accuracy_threshold, function(x) x$accuracy_threshold)
+names(GAG_accuracy_threshold) <- GAG_markers
+m_GAG_thresh <- melt(GAG_accuracy_threshold)
+colnames(m_GAG_thresh) <- c("Threshold", "Treatment", "Accuracy", "Quantile_Combo")
+m_GAG_thresh$Threshold <- as.numeric(as.character(m_GAG_thresh$Threshold))
+
+p <- ggplot(m_GAG_thresh, aes(x = Threshold, y = Accuracy, color = Treatment, linetype = Treatment))
+p <- p + geom_line() + facet_wrap(~ Quantile_Combo)
+p + ggtitle("Classification Accuracy by Probability Threshold - GAG Stimulation")
 
 
-p <- ggplot(stim_performance, aes(x = FPR, y = TPR, color = Stimulation))
-p + geom_line(aes(linetype = Stimulation)) + ggtitle("ROC Curve by Stimulation")
+#' ### ENV Classification Accuracy by Probability Thresholds
 
-# The cutoff value on the x-axis is the probability threshold used to determine
-# if a sample is classified as post-vaccine. For instance, if the threshold is
-# 0.6, then samples with probability estimates of class membership above 0.6 are
-# classified as post-vaccine.
-# The classification accuracy is given on the y-axis.
-p <- ggplot(stim_cutoffs, aes(x = Cutoff, y = Accuracy, color = Stimulation))
-p + geom_line(aes(linetype = Stimulation)) + ggtitle("Accuracy by Probability Threshold")
+#+ ENV_threshold_plot
 
- 
+ENV_accuracy_threshold <- lapply(seq_top, function(i) {
+  combo <- ENV_top[i, ]
+  results_markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]
+
+  # Extracts PTID and VISITNO from the test data used in the classification study
+  # for both the treatment and placebo groups
+  test_treated <- subset(results_markers$test_data$ENV_treated, select = c(PTID, VISITNO))
+  test_placebo <- subset(results_markers$test_data$ENV_placebo, select = c(PTID, VISITNO))
+
+  # Classification probabilities for treatment and placebo groups
+  probs_treated <- results_markers$classification_probs$ENV_treated
+  probs_placebo <- results_markers$classification_probs$ENV_placebo
+
+  accuracy_threshold <- lapply(prob_thresholds, function(threshold) {
+    correct_treated <- tapply(seq_along(test_treated$PTID), test_treated$PTID, function(i) {
+      if (diff(probs_treated[i]) > threshold) {
+        classification <- c("2", "12")
+      } else {
+        classification <- c("12", "2")
+      }
+      all(classification == test_treated$VISITNO[i])
+    })
+    treated_accuracy <- mean(correct_treated)
+
+    correct_placebo <- tapply(seq_along(test_placebo$PTID), test_placebo$PTID, function(i) {
+      if (diff(probs_placebo[i]) > threshold) {
+        classification <- c("2", "12")
+      } else {
+        classification <- c("12", "2")
+      }
+      all(classification == test_placebo$VISITNO[i])
+    })
+    placebo_accuracy <- mean(correct_placebo)
+
+    list(Treated = treated_accuracy, Placebo = placebo_accuracy)
+  })
+  accuracy_threshold <- do.call(rbind, accuracy_threshold)
+  list(markers = subset(combo, select = c(TNFa, IFNg, IL2)),
+       accuracy_threshold = cbind.data.frame(Threshold = as.factor(prob_thresholds),
+         accuracy_threshold))
+})
+
+ENV_markers <- sapply(ENV_accuracy_threshold, function(x) {
+  paste0(c("TNFa", "IFNg", "IL2"), x$markers, collapse = ":")
+})
+
+ENV_accuracy_threshold <- lapply(ENV_accuracy_threshold, function(x) x$accuracy_threshold)
+names(ENV_accuracy_threshold) <- ENV_markers
+m_ENV_thresh <- melt(ENV_accuracy_threshold)
+colnames(m_ENV_thresh) <- c("Threshold", "Treatment", "Accuracy", "Quantile_Combo")
+m_ENV_thresh$Threshold <- as.numeric(as.character(m_ENV_thresh$Threshold))
+
+p <- ggplot(m_ENV_thresh, aes(x = Threshold, y = Accuracy, color = Treatment, linetype = Treatment))
+p <- p + geom_line() + facet_wrap(~ Quantile_Combo)
+p + ggtitle("Classification Accuracy by Probability Threshold - ENV Stimulation")
+
+
 
 #+ manual_gates, eval=FALSE
 HVTN065_manual_gates <- subset(HVTN065_manual_gates, ANTIGEN %in% c("ENV-1-PTEG", "GAG-1-PTEG", "negctrl"))
@@ -372,7 +485,4 @@ manual_proportions <- ddply(manual_counts, .(PTID, VISITNO, ANTIGEN), function(x
 # TODO: Wait for full cytokine-gate information
 #   On 11 March 2013, Greg said he would look into it.
 #   After we have the full information, build a classifier for the manual proportions.
-
-
- 
 

@@ -79,6 +79,7 @@ polyfunction_nodes <- function(markers) {
 #' \code{getPopStats}
 #' @param treatment_info a data.frame containing a lookup of \code{PTID} and
 #' placebo/treatment information
+#' @param pdata an object returned from \code{pData} from the \code{GatingSet}
 #' @param train_pct a numeric value determining the percentage of treated
 #' patients used as training data and the remaining patients as test data
 #' @param paired logical value that determines if the classification accuracies
@@ -88,12 +89,14 @@ polyfunction_nodes <- function(markers) {
 #' that the first sample is classified as post-vaccine. Ignored if \code{paired}
 #' is \code{FALSE}. See details.
 #' @return TODO
-classification_summary <- function(popstats, treatment_info, train_pct = 0.6, paired = FALSE,
+classification_summary <- function(popstats, treatment_info, pdata,
+                                   train_pct = 0.6, paired = FALSE,
                                    prob_threshold = 0) {
   m_popstats <- melt(popstats)
   colnames(m_popstats) <- c("Marker", "Sample", "Proportion")
   m_popstats$Marker <- as.character(m_popstats$Marker)
-  m_popstats <- plyr:::join(m_popstats, pData_HVTN065, by = "Sample")
+
+  m_popstats <- plyr:::join(m_popstats, pdata, by = "Sample")
   m_popstats$VISITNO <- factor(m_popstats$VISITNO)
   m_popstats$PTID <- factor(m_popstats$PTID)
 
