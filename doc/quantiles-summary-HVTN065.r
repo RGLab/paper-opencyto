@@ -251,14 +251,14 @@ rownames(accuracy_results_numeric) <- NULL
 
 print(xtable(accuracy_results_numeric, digits = 4), include.rownames = FALSE, type = "html")
  
-#' ## Markers for Top 3 Quantile Combinations for Each Stimulation Group
+#' ## Markers for Top 6 Quantile Combinations for Each Stimulation Group
 #'
-#' We summarize the results for the top 3 cytokine-quantile combinations for each
-#' stimulation group. We choose the top 3 to be the largest differences in the
+#' We summarize the results for the top 6 cytokine-quantile combinations for each
+#' stimulation group. We choose the top 6 to be the largest differences in the
 #' classification accuracies between the treatment and placebo groups.
 
 #+ top_markers_summary
-seq_top <- seq_len(3)
+seq_top <- seq_len(6)
 
 accuracy_results <- cbind(cytokine_combinations, accuracy_results)
 
@@ -274,7 +274,7 @@ which_ENV_top <- order(accuracy_results$diff_ENV, decreasing = TRUE)[seq_top]
 GAG_top <- accuracy_results[which_GAG_top, ]
 ENV_top <- accuracy_results[which_ENV_top, ]
 
-#' For the top 3 cytokine-quantile combinations from each stimulation group, we
+#' For the top 6 cytokine-quantile combinations from each stimulation group, we
 #' provide the markers that were selected by 'glmnet'. In the case that
 #' `(Intercept)` is given, no markers are selected by `glmnet`, leaving only an
 #' intercept term.
@@ -296,12 +296,12 @@ ENV_top_markers <- do.call(rbind, lapply(ENV_top_markers, paste, collapse = ", "
 ENV_top_markers <- cbind.data.frame(cytokine_combinations[which_ENV_top, ], Markers = ENV_top_markers)
 
 
-#' ### Markers Selected by `glmnet` for Top 3 GAG Cytokine-Quantile Combinations
-#+ markers_top3_GAG, results='asis'
+#' ### Markers Selected by `glmnet` for Top 6 GAG Cytokine-Quantile Combinations
+#+ markers_top6_GAG, results='asis'
 print(xtable(GAG_top_markers, digits = 4), include.rownames = FALSE, type = "html")
 
-#' ### Markers Selected by `glmnet` for Top 3 ENV Cytokine-Quantile Combinations
-#+ markers_top3_ENV, results='asis'
+#' ### Markers Selected by `glmnet` for Top 6 ENV Cytokine-Quantile Combinations
+#+ markers_top6_ENV, results='asis'
 print(xtable(ENV_top_markers, digits = 4), include.rownames = FALSE, type = "html")
 
 #+ accuracy_by_thresholds
