@@ -151,9 +151,12 @@ TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
 
 cytokine_combinations <- expand.grid(TNFa = TNFa, IFNg = IFNg, IL2 = IL2,
                                      stringsAsFactors = FALSE)
-# To speed up the processing, we use a combination of plyr and foreach.
-registerDoMC(12)
-results_paired <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto_quantiles) {
+# To speed up the processing, we use mclapply with 'num_cores' cores.
+num_cores <- 12
+
+results_paired <- mclapply(seq_len(nrow(cytokine_combinations)), function(i) {
+  cyto_quantiles <- cytokine_combinations[i, ]
+
   TNFa <- paste0("TNFa", cyto_quantiles$TNFa)
   IFNg <- paste0("IFNg", cyto_quantiles$IFNg)
   IL2 <- paste0("IL2", cyto_quantiles$IL2)
@@ -186,8 +189,13 @@ results_paired <- dlply(cytokine_combinations, .(TNFa, IFNg, IL2), function(cyto
 
   classification_summary(popstats_combo, treatment_info, pdata = pData_HVTN065,
                          paired = TRUE, prob_threshold = 0)
-}, .parallel = TRUE)
+}, mc.cores = num_cores)
 
+cytokine_combos <- lapply(seq_len(nrow(cytokine_combinations)), function(i) {
+  cyto_combo <- cytokine_combinations[i, ]
+  paste(cyto_combo, collapse = ".")
+})
+names(results_paired) <- do.call(c, cytokine_combos)
 
 #+ classification_results_paired
 
@@ -210,11 +218,12 @@ m_accuracy$Treatment <- "Treatment"
 m_accuracy$Treatment <- with(m_accuracy,
                              replace(Treatment, grep("placebo", Treatment_Stimulation), "Placebo"))
 
-Cytokine_Combination <- dlply(m_accuracy, .(TNFa, IFNg, IL2), function(cyto_combo) {
+cytokine_labels <- lapply(seq_len(nrow(m_accuracy)), function(i) {
+  cyto_combo <- m_accuracy[i, ]
   cyto_combo <- as.numeric(c(cyto_combo$TNFa[1], cyto_combo$IFNg[1], cyto_combo$IL2[1])) / 1e4
   paste(cyto_combo, collapse = "\n")
 })
-m_accuracy$Cytokine_Combination <- do.call(c, Cytokine_Combination)
+m_accuracy$Cytokine_Combination <- do.call(c, cytokine_labels)
 
 #+ classification_results_figure, results='asis'
 
@@ -266,7 +275,9 @@ GAG_top <- accuracy_results[which_GAG_top, ]
 ENV_top <- accuracy_results[which_ENV_top, ]
 
 #' For the top 3 cytokine-quantile combinations from each stimulation group, we
-#' provide the markers that were selected by 'glmnet'.
+#' provide the markers that were selected by 'glmnet'. In the case that
+#' `(Intercept)` is given, no markers are selected by `glmnet`, leaving only an
+#' intercept term.
 
 GAG_top_markers <- lapply(seq_top, function(i) {
   combo <- GAG_top[i, ]
