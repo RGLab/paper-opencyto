@@ -223,7 +223,7 @@ p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
 p <- p + facet_grid(Stimulation ~ .) + ylim(0, 1)
 p <- p + xlab("Cytokine Quantiles (TNFa, IFNg, IL2)") + ylab("Classification Accuracy")
 p <- p + ggtitle("Cytokine-Quantile Classification Accuracy of Visit Numbers Paired by Patient") + theme_bw()
-p <- p + opts(plot.title  = theme_text(size = 18))
+p <- p + theme(plot.title  = element_text(size = 18))
 p <- p + theme(strip.text.y = element_text(size = 14))
 p + theme(axis.text = element_text(size = 12)) + theme(axis.title = element_text(size = 16))
 
@@ -252,7 +252,10 @@ print(xtable(accuracy_results_numeric, digits = 4), include.rownames = FALSE, ty
 seq_top <- seq_len(3)
 
 accuracy_results <- cbind(cytokine_combinations, accuracy_results)
-accuracy_results <- ddply(accuracy_results, .(TNFa, IFNg, IL2), transform,
+
+# To ensure that the ordering of the quantile combinations is preserved,
+# notice that we reverse the order of cytokines specified in 'ddply'.
+accuracy_results <- ddply(accuracy_results, .(IL2, IFNg, TNFa), transform,
                           diff_GAG = GAG_treatment - GAG_placebo,
                           diff_ENV = ENV_treatment - ENV_placebo)
 
@@ -353,8 +356,8 @@ m_GAG_thresh$Threshold <- as.numeric(as.character(m_GAG_thresh$Threshold))
 p <- ggplot(m_GAG_thresh, aes(x = Threshold, y = Accuracy, color = Treatment, linetype = Treatment))
 p <- p + geom_line(size = 2) + facet_wrap(~ Quantile_Combo)
 p <- p + ggtitle("Classification Accuracy by Probability Threshold - GAG Stimulation") + theme_bw()
-p <- p + opts(legend.title = theme_text(size = 14)) + opts(legend.text = theme_text(size = 12))
-p <- p + opts(plot.title  = theme_text(size = 18)) + theme(strip.text.x = element_text(size = 14))
+p <- p + theme(legend.title = element_text(size = 14)) + theme(legend.text = element_text(size = 12))
+p <- p + theme(plot.title  = element_text(size = 18)) + theme(strip.text.x = element_text(size = 14))
 p <- p + theme(axis.text = element_text(size = 12)) + theme(axis.title = element_text(size = 16))
 p + xlab("Probability Threshold")
 
@@ -418,8 +421,8 @@ m_ENV_thresh$Threshold <- as.numeric(as.character(m_ENV_thresh$Threshold))
 p <- ggplot(m_ENV_thresh, aes(x = Threshold, y = Accuracy, color = Treatment, linetype = Treatment))
 p <- p + geom_line(size = 2) + facet_wrap(~ Quantile_Combo)
 p <- p + ggtitle("Classification Accuracy by Probability Threshold - ENV Stimulation") + theme_bw()
-p <- p + opts(legend.title = theme_text(size = 14)) + opts(legend.text = theme_text(size = 12))
-p <- p + opts(plot.title  = theme_text(size = 18)) + theme(strip.text.x = element_text(size = 14))
+p <- p + theme(legend.title = element_text(size = 14)) + theme(legend.text = element_text(size = 12))
+p <- p + theme(plot.title  = element_text(size = 18)) + theme(strip.text.x = element_text(size = 14))
 p <- p + theme(axis.text = element_text(size = 12)) + theme(axis.title = element_text(size = 16))
 p + xlab("Probability Threshold")
 
