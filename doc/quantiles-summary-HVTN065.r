@@ -251,58 +251,26 @@ rownames(accuracy_results_numeric) <- NULL
 
 print(xtable(accuracy_results_numeric, digits = 4), include.rownames = FALSE, type = "html")
  
+
+
+
+
 #' ## Markers for Top 6 Quantile Combinations for Each Stimulation Group
 #'
-#' We summarize the results for the top 6 cytokine-quantile combinations for each
-#' stimulation group. We choose the top 6 to be the largest differences in the
-#' classification accuracies between the treatment and placebo groups.
+#' We summarize the results for the top 6 cytokine-quantile combinations for
+#' each stimulation group. First, we calculate ROC curves assuming all vaccinees
+#' are true positive and the placebos are false positive. We choose the top 6
+#' models that have the largest area under the curve (AUC) scores based on these
+#' ROC curves.
 
 #+ top_markers_summary
 seq_top <- seq_len(6)
 
-accuracy_results <- cbind(cytokine_combinations, accuracy_results)
-
-# To ensure that the ordering of the quantile combinations is preserved,
-# notice that we reverse the order of cytokines specified in 'ddply'.
-accuracy_results <- ddply(accuracy_results, .(IL2, IFNg, TNFa), transform,
-                          diff_GAG = GAG_treatment - GAG_placebo,
-                          diff_ENV = ENV_treatment - ENV_placebo)
-
-which_GAG_top <- order(accuracy_results$diff_GAG, decreasing = TRUE)[seq_top]
-which_ENV_top <- order(accuracy_results$diff_ENV, decreasing = TRUE)[seq_top]
-
-GAG_top <- accuracy_results[which_GAG_top, ]
-ENV_top <- accuracy_results[which_ENV_top, ]
-
-#' For the top 6 cytokine-quantile combinations from each stimulation group, we
-#' provide the markers that were selected by 'glmnet'. In the case that
-#' `(Intercept)` is given, no markers are selected by `glmnet`, leaving only an
-#' intercept term.
-
-GAG_top_markers <- lapply(seq_top, function(i) {
-  combo <- GAG_top[i, ]
-  markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]$markers$GAG
-  strip_quantiles(markers, quantiles = c("9950", "9990", "9999"))
-})
-GAG_top_markers <- do.call(rbind, lapply(GAG_top_markers, paste, collapse = ", "))
-GAG_top_markers <- cbind.data.frame(cytokine_combinations[which_GAG_top, ], Markers = GAG_top_markers)
-
-ENV_top_markers <- lapply(seq_top, function(i) {
-  combo <- ENV_top[i, ]
-  markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]$markers$ENV
-  strip_quantiles(markers, quantiles = c("9950", "9990", "9999"))
-})
-ENV_top_markers <- do.call(rbind, lapply(ENV_top_markers, paste, collapse = ", "))
-ENV_top_markers <- cbind.data.frame(cytokine_combinations[which_ENV_top, ], Markers = ENV_top_markers)
 
 
-#' ### Markers Selected by `glmnet` for Top 6 GAG Cytokine-Quantile Combinations
-#+ markers_top6_GAG, results='asis'
-print(xtable(GAG_top_markers, digits = 4), include.rownames = FALSE, type = "html")
 
-#' ### Markers Selected by `glmnet` for Top 6 ENV Cytokine-Quantile Combinations
-#+ markers_top6_ENV, results='asis'
-print(xtable(ENV_top_markers, digits = 4), include.rownames = FALSE, type = "html")
+
+
 
 #+ accuracy_by_thresholds
 
@@ -311,9 +279,10 @@ prob_thresholds <- seq(0, 0.5, by = 0.01)
 #' ### GAG Classification Accuracy by Probability Thresholds
 
 #+ GAG_threshold_plot
-
-GAG_accuracy_threshold <- lapply(seq_top, function(i) {
-  combo <- GAG_top[i, ]
+# To ensure that the ordering of the quantile combinations is preserved,
+# notice that we reverse the order of cytokines specified in 'ddply'.
+GAG_accuracy_threshold <- dlply(cytokine_combinations, .(IL2, IFNg, TNFa), function(combo) {
+  marker_combo <- paste0(c("TNFa", "IFNg", "IL2"), combo, collapse = ":")
   results_markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]
 
   # Extracts PTID and VISITNO from the test data used in the classification study
@@ -349,36 +318,34 @@ GAG_accuracy_threshold <- lapply(seq_top, function(i) {
     list(Treated = treated_accuracy, Placebo = placebo_accuracy)
   })
   accuracy_threshold <- do.call(rbind, accuracy_threshold)
-  list(markers = subset(combo, select = c(TNFa, IFNg, IL2)),
-       accuracy_threshold = cbind.data.frame(Threshold = as.factor(prob_thresholds),
-         accuracy_threshold))
+  cbind.data.frame(Marker_Combo = marker_combo,
+                   Threshold = as.factor(prob_thresholds), accuracy_threshold)
 })
 
-GAG_markers <- sapply(GAG_accuracy_threshold, function(x) {
-  paste0(c("TNFa", "IFNg", "IL2"), x$markers, collapse = ":")
-})
+GAG_accuracy_threshold <- do.call(rbind, GAG_accuracy_threshold)
+rownames(GAG_accuracy_threshold) <- NULL
 
-GAG_accuracy_threshold <- lapply(GAG_accuracy_threshold, function(x) x$accuracy_threshold)
-names(GAG_accuracy_threshold) <- GAG_markers
-m_GAG_thresh <- melt(GAG_accuracy_threshold)
-colnames(m_GAG_thresh) <- c("Threshold", "Treatment", "Accuracy", "Quantile_Combo")
-m_GAG_thresh$Threshold <- as.numeric(as.character(m_GAG_thresh$Threshold))
+GAG_accuracy_threshold$Treated <- unlist(GAG_accuracy_threshold$Treated)
+GAG_accuracy_threshold$Placebo <- unlist(GAG_accuracy_threshold$Placebo)
 
-p <- ggplot(m_GAG_thresh, aes(x = Threshold, y = Accuracy, color = Treatment, linetype = Treatment))
-p <- p + geom_line(size = 2) + facet_wrap(~ Quantile_Combo)
-p <- p + ggtitle("Classification Accuracy by Probability Threshold - GAG Stimulation") + theme_bw()
-p <- p + theme(legend.title = element_text(size = 14)) + theme(legend.text = element_text(size = 12))
-p <- p + theme(plot.title  = element_text(size = 18)) + theme(strip.text.x = element_text(size = 14))
-p <- p + theme(axis.text = element_text(size = 12)) + theme(axis.title = element_text(size = 16))
-p + xlab("Probability Threshold")
+
+# Calculates AUC for each marker combination
+GAG_AUC_combo <- with(GAG_accuracy_threshold, tapply(seq_along(Marker_Combo), Marker_Combo, function(i) {
+  pairwise <- expand.grid(Treated = Treated[i], Placebo = Placebo[i])
+  mean(pairwise$Treated > pairwise$Placebo)
+}))
+GAG_AUC_combo <- melt(GAG_AUC_combo)
+colnames(GAG_AUC_combo) <- c("Quantile_Combo", "AUC")
+
 
 
 #' ### ENV Classification Accuracy by Probability Thresholds
 
 #+ ENV_threshold_plot
-
-ENV_accuracy_threshold <- lapply(seq_top, function(i) {
-  combo <- ENV_top[i, ]
+# To ensure that the ordering of the quantile combinations is preserved,
+# notice that we reverse the order of cytokines specified in 'ddply'.
+ENV_accuracy_threshold <- dlply(cytokine_combinations, .(IL2, IFNg, TNFa), function(combo) {
+  marker_combo <- paste0(c("TNFa", "IFNg", "IL2"), combo, collapse = ":")
   results_markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]
 
   # Extracts PTID and VISITNO from the test data used in the classification study
@@ -414,10 +381,80 @@ ENV_accuracy_threshold <- lapply(seq_top, function(i) {
     list(Treated = treated_accuracy, Placebo = placebo_accuracy)
   })
   accuracy_threshold <- do.call(rbind, accuracy_threshold)
-  list(markers = subset(combo, select = c(TNFa, IFNg, IL2)),
-       accuracy_threshold = cbind.data.frame(Threshold = as.factor(prob_thresholds),
-         accuracy_threshold))
+  cbind.data.frame(Marker_Combo = marker_combo,
+                   Threshold = as.factor(prob_thresholds), accuracy_threshold)
 })
+
+ENV_accuracy_threshold <- do.call(rbind, ENV_accuracy_threshold)
+rownames(ENV_accuracy_threshold) <- NULL
+
+ENV_accuracy_threshold$Treated <- unlist(ENV_accuracy_threshold$Treated)
+ENV_accuracy_threshold$Placebo <- unlist(ENV_accuracy_threshold$Placebo)
+
+
+# Calculates AUC for each marker combination
+ENV_AUC_combo <- with(ENV_accuracy_threshold, tapply(seq_along(Marker_Combo), Marker_Combo, function(i) {
+  pairwise <- expand.grid(Treated = Treated[i], Placebo = Placebo[i])
+  mean(pairwise$Treated > pairwise$Placebo)
+}))
+ENV_AUC_combo <- melt(ENV_AUC_combo)
+colnames(ENV_AUC_combo) <- c("Quantile_Combo", "AUC")
+
+
+# Combines AUCs by stimulation to see comparison
+AUC_combo <- rbind(cbind(GAG_AUC_combo, Stimulation = "GAG"), cbind(ENV_AUC_combo, Stimulation = "ENV"))
+
+# TODO: Clean up labels
+p <- ggplot(AUC_combo, aes(x = Quantile_Combo, fill = Stimulation)) + geom_bar(aes(weight = AUC), position = "dodge")
+p + xlab("Cytokine Quantile Combination") + ylab("AUC") + ggtitle("Area Under the Curve (AUC) by Cytokine Combination")
+
+
+#+ ROC_by__top_AUC, eval=FALSE
+z$Placebo <- unlist(z$Placebo)
+z$Treated <- unlist(z$Treated)
+p <- ggplot(z, aes(x = Placebo, y = Treated)) + geom_line()
+p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)")
+
+
+#+ markers_by_top_AUC, eval=FALSE
+
+
+
+
+
+
+
+
+# TODO: Make sure that this ordering matches the ordering of 'GAG_accuracy_threshold' combo
+GAG_markers <- apply(cytokine_combinations, 1, function(combo) {
+  paste0(c("TNFa", "IFNg", "IL2"), combo, collapse = ":")
+})
+names(GAG_accuracy_threshold) <- GAG_markers
+m_GAG_thresh <- melt(GAG_accuracy_threshold)
+colnames(m_GAG_thresh) <- c("Threshold", "Treatment", "Accuracy", "Quantile_Combo")
+m_GAG_thresh$Threshold <- as.numeric(as.character(m_GAG_thresh$Threshold))
+
+p <- ggplot(m_GAG_thresh, aes(x = Threshold, y = Accuracy, color = Treatment, linetype = Treatment))
+p <- p + geom_line(size = 2) + facet_wrap(~ Quantile_Combo)
+p <- p + ggtitle("Classification Accuracy by Probability Threshold - GAG Stimulation") + theme_bw()
+p <- p + theme(legend.title = element_text(size = 14)) + theme(legend.text = element_text(size = 12))
+p <- p + theme(plot.title  = element_text(size = 18)) + theme(strip.text.x = element_text(size = 14))
+p <- p + theme(axis.text = element_text(size = 12)) + theme(axis.title = element_text(size = 16))
+p + xlab("Probability Threshold")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ENV_markers <- sapply(ENV_accuracy_threshold, function(x) {
   paste0(c("TNFa", "IFNg", "IL2"), x$markers, collapse = ":")
@@ -503,6 +540,72 @@ manual_proportions <- ddply(manual_counts, .(PTID, VISITNO, ANTIGEN), function(x
 
   proportions
 })
+
+
+
+
+
+
+accuracy_results <- cbind(cytokine_combinations, accuracy_results)
+
+# TODO: Update the 'diff' scores to AUC 
+# To ensure that the ordering of the quantile combinations is preserved,
+# notice that we reverse the order of cytokines specified in 'ddply'.
+accuracy_results <- ddply(accuracy_results, .(IL2, IFNg, TNFa), transform,
+                          diff_GAG = GAG_treatment - GAG_placebo,
+                          diff_ENV = ENV_treatment - ENV_placebo)
+
+which_GAG_top <- order(accuracy_results$diff_GAG, decreasing = TRUE)[seq_top]
+which_ENV_top <- order(accuracy_results$diff_ENV, decreasing = TRUE)[seq_top]
+
+GAG_top <- accuracy_results[which_GAG_top, ]
+ENV_top <- accuracy_results[which_ENV_top, ]
+
+#' For the top 6 cytokine-quantile combinations from each stimulation group, we
+#' provide the markers that were selected by 'glmnet'. In the case that
+#' `(Intercept)` is given, no markers are selected by `glmnet`, leaving only an
+#' intercept term.
+
+GAG_top_markers <- lapply(seq_top, function(i) {
+  combo <- GAG_top[i, ]
+  markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]$markers$GAG
+  strip_quantiles(markers, quantiles = c("9950", "9990", "9999"))
+})
+GAG_top_markers <- do.call(rbind, lapply(GAG_top_markers, paste, collapse = ", "))
+GAG_top_markers <- cbind.data.frame(cytokine_combinations[which_GAG_top, ], Markers = GAG_top_markers)
+
+ENV_top_markers <- lapply(seq_top, function(i) {
+  combo <- ENV_top[i, ]
+  markers <- results_paired[[with(combo, paste(TNFa, IFNg, IL2, sep = "."))]]$markers$ENV
+  strip_quantiles(markers, quantiles = c("9950", "9990", "9999"))
+})
+ENV_top_markers <- do.call(rbind, lapply(ENV_top_markers, paste, collapse = ", "))
+ENV_top_markers <- cbind.data.frame(cytokine_combinations[which_ENV_top, ], Markers = ENV_top_markers)
+
+
+#' ### Markers Selected by `glmnet` for Top 6 GAG Cytokine-Quantile Combinations
+#+ markers_top6_GAG, results='asis'
+print(xtable(GAG_top_markers, digits = 4), include.rownames = FALSE, type = "html")
+
+#' ### Markers Selected by `glmnet` for Top 6 ENV Cytokine-Quantile Combinations
+#+ markers_top6_ENV, results='asis'
+print(xtable(ENV_top_markers, digits = 4), include.rownames = FALSE, type = "html")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # TODO: Wait for full cytokine-gate information
