@@ -255,22 +255,16 @@ print(xtable(accuracy_results_numeric, digits = 4), include.rownames = FALSE, ty
 
 
 
-#' ## Markers for Top 6 Quantile Combinations for Each Stimulation Group
+#' ## Markers for Top 3 Quantile Combinations for Each Stimulation Group
 #'
-#' We summarize the results for the top 6 cytokine-quantile combinations for
+#' We summarize the results for the top 3 cytokine-quantile combinations for
 #' each stimulation group. First, we calculate ROC curves assuming all vaccinees
-#' are true positive and the placebos are false positive. We choose the top 6
+#' are true positive and the placebos are false positive. We choose the top 3
 #' models that have the largest area under the curve (AUC) scores based on these
 #' ROC curves.
 
 #+ top_markers_summary
-seq_top <- seq_len(6)
-
-
-
-
-
-
+seq_top <- seq_len(3)
 
 #+ accuracy_by_thresholds
 
@@ -403,15 +397,16 @@ colnames(ENV_AUC_combo) <- c("Quantile_Combo", "AUC")
 
 # Combines AUCs by stimulation to see comparison
 AUC_combo <- rbind(cbind(GAG_AUC_combo, Stimulation = "GAG"), cbind(ENV_AUC_combo, Stimulation = "ENV"))
+AUC_combo$Combo_Label <- gsub(":", "\n", AUC_combo$Quantile_Combo)
 
-# TODO: Clean up labels
-p <- ggplot(AUC_combo, aes(x = Quantile_Combo, fill = Stimulation)) + geom_bar(aes(weight = AUC), position = "dodge")
+p <- ggplot(AUC_combo, aes(x = Combo_Label, fill = Stimulation)) + geom_bar(aes(weight = AUC), position = "dodge")
 p + xlab("Cytokine Quantile Combination") + ylab("AUC") + ggtitle("Area Under the Curve (AUC) by Cytokine Combination")
 
 
+
+
+
 #+ ROC_by__top_AUC, eval=FALSE
-z$Placebo <- unlist(z$Placebo)
-z$Treated <- unlist(z$Treated)
 p <- ggplot(z, aes(x = Placebo, y = Treated)) + geom_line()
 p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)")
 

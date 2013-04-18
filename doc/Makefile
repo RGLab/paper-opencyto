@@ -6,7 +6,7 @@
 # http://www.stat.auckland.ac.nz/~stat782/downloads/make-tutorial.pdf
 
 # Put all PDF targets here, separated by spaces.
-REPORTS= quantiles-summary-HVTN065.html
+REPORTS= quantiles-summary-HVTN065.html cytokines-HVTN065.html
 
 all: $(REPORTS) 
 
