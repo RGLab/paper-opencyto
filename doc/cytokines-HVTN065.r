@@ -23,9 +23,9 @@
 
 #+ setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE
 opts_chunk$set(fig.align = 'default', dev = 'png', message = FALSE, warning = FALSE,
-               cache = TRUE, echo = FALSE, fig.path = 'figure/cytokines-HVTN065-',
+               cache = FALSE, echo = FALSE, fig.path = 'figure/cytokines-HVTN065-',
                cache.path = 'cache/cytokines-HVTN065-', fig.width = 18, fig.height = 18,
-               autodep = TRUE, results = 'hide')
+               results = 'hide')
 
 #+ load_data  
 setwd("..")
