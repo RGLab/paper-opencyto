@@ -419,7 +419,7 @@ GAG_AUC<-data.frame(thresholds=names(results_paired),AUC=GAG_AUC)
 GAG_AUC<-GAG_AUC[order(GAG_AUC$AUC,decreasing=TRUE),]
 ggplot(GAG_AUC)+geom_bar(aes(x=thresholds,y=AUC),stat='identity')+theme(axis.text.x=element_text(angle=90))+scale_y_continuous(lim=c(-0.05,1),breaks=seq(0,1,l=21))+scale_x_discrete("Quantile Thresholds")+labs(title="GAG AUC Values")
 #'Draw ROC for number 7, the top performer
-i<-4
+i<-14
 df<-cbind(truth<-rbind(results_paired[[i]]$test_data$GAG_treated[,c("PTID","VISITNO")],results_paired[[i]]$test_data$GAG_placebo[,c("PTID","VISITNO")]),
           P=c(results_paired[[i]]$classification_probs$GAG_treated,results_paired[[i]]$classification_probs$GAG_placebo),truth=c(rep(c("Treatment"),nrow(results_paired[[i]]$test_data$GAG_treated)),rep(c("Placebo"),nrow(results_paired[[i]]$test_data$GAG_placebo))))
 df<-ddply(df,.(PTID),summarize,delta=1-diff(P[VISITNO%in%c("2","12")]),truth=unique(truth))
@@ -461,6 +461,7 @@ ggplot(ENV_ROC)+geom_line(aes(x=FPR,y=TPR))
 COMB_ROC<-data.frame(rbind(ENV_ROC,GAG_ROC),Stim=c(rep("ENV",nrow(ENV_ROC)),rep("GAG",nrow(GAG_ROC))))
 ggplot(COMB_ROC)+geom_line(aes(x=FPR,y=TPR,color=Stim),lwd=2)+labs(title="ROC Curves for best gating of ENV and GAG Stimulated Samples")+theme(axis.title.x=element_text(size=21),axis.title.y=element_text(size=21))
 
+ggplot(data.frame(rbind(ENV_AUC,GAG_AUC),Stim=rep(c("ENV","GAG"),each=nrow(ENV_AUC))))+geom_bar(aes(y=AUC,x=thresholds,fill=Stim),position="identity",stat="identity",alpha=0.5)+theme(axis.text.x=element_text(angle=90))+scale_y_continuous(breaks=seq(0,1,l=21))+labs(title="AUC for ENV and GAG Stimulations\nDifferent Gating Thresholds")
 #End Greg's code
 
 
