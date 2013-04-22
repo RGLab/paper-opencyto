@@ -61,7 +61,7 @@ analysis_plan[, `:=`(PTID, factor(PTID))]
 analysis_plan[, `:=`(SAMP_ORD, factor(SAMP_ORD))]
 setnames(fcs_headers, c("ASSAYID", "SAMP_ORD", "ANTIGEN", "FCS_file"))
 setkey(fcs_headers, SAMP_ORD, ASSAYID, ANTIGEN)
-merged <- merge(analysis_plan, fcs_headers, by = c("SAMP_ORD", "ASSAYID", "ANTIGEN"))
+merged <- base:::merge(analysis_plan, fcs_headers, by = c("SAMP_ORD", "ASSAYID", "ANTIGEN"))
 setkey(merged, PTID) 
 merged_sub <- merged[ANTIGEN %in% antigens]
 
@@ -90,16 +90,51 @@ merged_sub <- merged_sub[file.exists(comp_file)]
 # Remove records with only one visit
 merged_sub <- merged_sub[, .SD[length(unique(VISITNO)) == 2], by = c("PTID,ANTIGEN")]
 
-
 # Create analysis_plan
 analysis_plan <- merged_sub
 analysis_plan <- as.data.frame(lapply(analysis_plan, factor)) 
 analysis_plan$FCS_file <- as.character(analysis_plan$FCS_file)
 analysis_plan$comp_file <- as.character(analysis_plan$comp_file)
 
+# For each unique compensation file, we read in the FCS files are to be
+# compensated with this matrix and then construct a flowSet object.
+flowset_list <- tapply(seq_along(analysis_plan$comp_file), analysis_plan$comp_file, function(i) {
+  comp_file <- unique(analysis_plan$comp_file[i])
+
+  # Reads the compensation matrix and the column names separately to avoid the
+  # R-friendly dots that are added to some of the channels
+  comp_colnames <- as.character(read.csv(comp_file, header = FALSE,
+                                         stringsAsFactors = FALSE, nrows = 1))
+  comp_matrix <- read.csv(comp_file, header = FALSE, stringsAsFactors = FALSE,
+                          skip = 1)
+  colnames(comp_matrix) <- comp_colnames
+
+  # Reads the FCS files as a flowSet and then apply compensation
+  flow_set <- read.flowSet(analysis_plan$FCS_file[i], min.limit = -100)
+  flow_set <- compensate(flow_set, comp_matrix)
+
+  flow_set
+})
+
+gs_list <- lapply(flowset_list, GatingSet)
+
+foo <- GatingSetList(gs_list)
+
+gs_HVTN065 <- rbind2(foo)
+
+#gs_list <- rbind2(gs_list)
 
 
 
-# TODO: Move this script to 'munge'
-# TODO: Read in FCS files and store them at a *.nc file after compensation/transformation
-# TODO: Rerun HVTN065.r once things have been cleaned up.
+# TODO: Merge list of flowSets to a single flowSet
+# TODO: Save merged flowSet to a ncdfFlowSet file (*.nc)
+# TODO: Add transformation
+# TODO: Rerun munge code
+# TODO: Rerun HVTN065.r
+
+
+# Determines transformation for all channels except for "Time" and the sidescatter channels
+# trans <- openCyto:::estimateMedianLogicle(ncdf_flowSet, channels = colnames(ncdf_flowSet)[-c(1:3, 5)])
+
+# Applies the estimated transformation to the ncdfFlow set object
+# ncdf_flowSet_trans <- transform(ncdf_flowSet, trans)
