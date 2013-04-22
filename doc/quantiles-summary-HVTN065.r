@@ -400,10 +400,69 @@ AUC_combo <- rbind(cbind(GAG_AUC_combo, Stimulation = "GAG"), cbind(ENV_AUC_comb
 AUC_combo$Combo_Label <- gsub(":", "\n", AUC_combo$Quantile_Combo)
 
 p <- ggplot(AUC_combo, aes(x = Combo_Label, fill = Stimulation)) + geom_bar(aes(weight = AUC), position = "dodge")
-p + xlab("Cytokine Quantile Combination") + ylab("AUC") + ggtitle("Area Under the Curve (AUC) by Cytokine Combination")
+p + xlab("Cytokine Quantile Combination") + ylab("AUC") + ggtitle("Area Under the Curve (AUC) by Cytokine Combination")+theme(axis.text.x=element_text(angle=90))
 
+###Begin Greg's code
+#'Use results_paired to construct ROC curves.
+require(pracma)
+GAG_AUC<-sapply(seq_along(results_paired),function(i){
+df<-cbind(truth<-rbind(results_paired[[i]]$test_data$GAG_treated[,c("PTID","VISITNO")],results_paired[[i]]$test_data$GAG_placebo[,c("PTID","VISITNO")]),
+P=c(results_paired[[i]]$classification_probs$GAG_treated,results_paired[[i]]$classification_probs$GAG_placebo),truth=c(rep(c("Treatment"),nrow(results_paired[[i]]$test_data$GAG_treated)),rep(c("Placebo"),nrow(results_paired[[i]]$test_data$GAG_placebo))))
+df<-ddply(df,.(PTID),summarize,delta=1-diff(P[VISITNO%in%c("2","12")]),truth=unique(truth))
+df<-df[order(df$delta,df$truth,decreasing=FALSE),]
+o<-order(df$delta,decreasing=FALSE)
+FPR<-cumsum(df$truth[o]=="Placebo")/sum(df$truth=="Placebo")
+TPR<-cumsum(df$truth[o]=="Treatment")/sum(df$truth=="Treatment")
+AUC<-trapz(FPR,TPR)
+})
+GAG_AUC<-data.frame(thresholds=names(results_paired),AUC=GAG_AUC)
+GAG_AUC<-GAG_AUC[order(GAG_AUC$AUC,decreasing=TRUE),]
+ggplot(GAG_AUC)+geom_bar(aes(x=thresholds,y=AUC),stat='identity')+theme(axis.text.x=element_text(angle=90))+scale_y_continuous(lim=c(-0.05,1),breaks=seq(0,1,l=21))+scale_x_discrete("Quantile Thresholds")+labs(title="GAG AUC Values")
+#'Draw ROC for number 7, the top performer
+i<-14
+df<-cbind(truth<-rbind(results_paired[[i]]$test_data$GAG_treated[,c("PTID","VISITNO")],results_paired[[i]]$test_data$GAG_placebo[,c("PTID","VISITNO")]),
+          P=c(results_paired[[i]]$classification_probs$GAG_treated,results_paired[[i]]$classification_probs$GAG_placebo),truth=c(rep(c("Treatment"),nrow(results_paired[[i]]$test_data$GAG_treated)),rep(c("Placebo"),nrow(results_paired[[i]]$test_data$GAG_placebo))))
+df<-ddply(df,.(PTID),summarize,delta=1-diff(P[VISITNO%in%c("2","12")]),truth=unique(truth))
+df<-df[order(df$delta,df$truth,decreasing=FALSE),]
+o<-order(df$delta,decreasing=FALSE)
+FPR<-cumsum(df$truth[o]=="Placebo")/sum(df$truth=="Placebo")
+TPR<-cumsum(df$truth[o]=="Treatment")/sum(df$truth=="Treatment")
+GAG_ROC<-data.frame(FPR,TPR)
+ggplot(GAG_ROC)+geom_line(aes(x=FPR,y=TPR))
 
+#'ENV
+ENV_AUC<-sapply(seq_along(results_paired),function(i){
+df<-cbind(truth<-rbind(results_paired[[i]]$test_data$ENV_treated[,c("PTID","VISITNO")],results_paired[[i]]$test_data$ENV_placebo[,c("PTID","VISITNO")]),
+          P=c(results_paired[[i]]$classification_probs$ENV_treated,results_paired[[i]]$classification_probs$ENV_placebo),truth=c(rep(c("Treatment"),nrow(results_paired[[i]]$test_data$ENV_treated)),rep(c("Placebo"),nrow(results_paired[[i]]$test_data$ENV_placebo))))
+df<-ddply(df,.(PTID),summarize,delta=1-diff(P[VISITNO%in%c("2","12")]),truth=unique(truth))
+df<-df[order(df$delta,df$truth,decreasing=FALSE),]
+o<-order(df$delta,decreasing=FALSE)
+FPR<-cumsum(df$truth[o]=="Placebo")/sum(df$truth=="Placebo")
+TPR<-cumsum(df$truth[o]=="Treatment")/sum(df$truth=="Treatment")
+AUC<-trapz(FPR,TPR)
+})
+ENV_AUC<-data.frame(thresholds=names(results_paired),AUC=ENV_AUC)
+ENV_AUC<-ENV_AUC[order(ENV_AUC$AUC,decreasing=TRUE),]
+ggplot(ENV_AUC)+geom_bar(aes(x=thresholds,y=AUC),stat='identity')+theme(axis.text.x=element_text(angle=90))+scale_y_continuous(lim=c(-0.05,1),breaks=seq(0,1,l=21))+scale_x_discrete("Quantile Thresholds")+labs(title="ENV AUC Values")
 
+#'ROC for top performer in ENV, 14
+i<-14
+df<-cbind(truth<-rbind(results_paired[[i]]$test_data$ENV_treated[,c("PTID","VISITNO")],results_paired[[i]]$test_data$ENV_placebo[,c("PTID","VISITNO")]),
+          P=c(results_paired[[i]]$classification_probs$ENV_treated,results_paired[[i]]$classification_probs$ENV_placebo),truth=c(rep(c("Treatment"),nrow(results_paired[[i]]$test_data$ENV_treated)),rep(c("Placebo"),nrow(results_paired[[i]]$test_data$ENV_placebo))))
+df<-ddply(df,.(PTID),summarize,delta=1-diff(P[VISITNO%in%c("2","12")]),truth=unique(truth))
+df<-df[order(df$delta,df$truth,decreasing=FALSE),]
+o<-order(df$delta,decreasing=FALSE)
+FPR<-cumsum(df$truth[o]=="Placebo")/sum(df$truth=="Placebo")
+TPR<-cumsum(df$truth[o]=="Treatment")/sum(df$truth=="Treatment")
+ENV_ROC<-data.frame(FPR,TPR)
+ggplot(ENV_ROC)+geom_line(aes(x=FPR,y=TPR))
+
+#'Combined ROC for ENV and GAG
+COMB_ROC<-data.frame(rbind(ENV_ROC,GAG_ROC),Stim=c(rep("ENV",nrow(ENV_ROC)),rep("GAG",nrow(GAG_ROC))))
+ggplot(COMB_ROC)+geom_line(aes(x=FPR,y=TPR,color=Stim),lwd=2)+labs(title="ROC Curves for best gating of ENV and GAG Stimulated Samples")+theme(axis.title.x=element_text(size=21),axis.title.y=element_text(size=21))
+
+ggplot(data.frame(rbind(ENV_AUC,GAG_AUC),Stim=rep(c("ENV","GAG"),each=nrow(ENV_AUC))))+geom_bar(aes(y=AUC,x=thresholds,fill=Stim),position="identity",stat="identity",alpha=0.5)+theme(axis.text.x=element_text(angle=90))+scale_y_continuous(breaks=seq(0,1,l=21))+labs(title="AUC for ENV and GAG Stimulations\nDifferent Gating Thresholds")
+#End Greg's code
 
 
 #+ ROC_by__top_AUC, eval=FALSE
