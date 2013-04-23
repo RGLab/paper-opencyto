@@ -98,7 +98,7 @@ analysis_plan$comp_file <- as.character(analysis_plan$comp_file)
 
 # For each unique compensation file, we read in the FCS files are to be
 # compensated with this matrix and then construct a flowSet object.
-flowset_list <- tapply(seq_along(analysis_plan$comp_file), analysis_plan$comp_file, function(i) {
+fs_list <- tapply(seq_along(analysis_plan$comp_file), analysis_plan$comp_file, function(i) {
   comp_file <- unique(analysis_plan$comp_file[i])
 
   # Reads the compensation matrix and the column names separately to avoid the
@@ -116,25 +116,38 @@ flowset_list <- tapply(seq_along(analysis_plan$comp_file), analysis_plan$comp_fi
   flow_set
 })
 
-gs_list <- lapply(flowset_list, GatingSet)
+# Across all samples in the flowSet, we find the common channel names.
+common_channels <- colnames(fs_list[[1]])
+for (i in seq.int(2, length(fs_list))) {
+  common_channels <- intersect(common_channels, colnames(fs_list[[i]]))
+}
 
-foo <- GatingSetList(gs_list)
+# Loop through the 'fs_list' and extract the common_channels
+fs_list <- lapply(seq_along(fs_list), function(i) {
+  fsApply(fs_list[[i]], function(x) {
+    x[, common_channels]
+  })
+})
 
-gs_HVTN065 <- rbind2(foo)
-
-#gs_list <- rbind2(gs_list)
-
-
-
-# TODO: Merge list of flowSets to a single flowSet
-# TODO: Save merged flowSet to a ncdfFlowSet file (*.nc)
-# TODO: Add transformation
-# TODO: Rerun munge code
-# TODO: Rerun HVTN065.r
-
+# Merges the list of flowSet objects into a single flowSet object. This code is
+# verbose but it circumvents an issue introduced recently in flowIncubator.
+flow_set <- fs_list[[1]]
+for (i in seq.int(2, length(fs_list))) {
+  flow_set <- rbind2(flow_set, fs_list[[i]])
+}
 
 # Determines transformation for all channels except for "Time" and the sidescatter channels
-# trans <- openCyto:::estimateMedianLogicle(ncdf_flowSet, channels = colnames(ncdf_flowSet)[-c(1:3, 5)])
+logicle_trans <- openCyto:::estimateMedianLogicle(flow_set,
+                                                  channels = common_channels[-(1:4)])
 
 # Applies the estimated transformation to the ncdfFlow set object
-# ncdf_flowSet_trans <- transform(ncdf_flowSet, trans)
+flow_set <- transform(flow_set, logicle_trans)
+
+# Create ncdfFlowSet object from flowSet
+ncdf_flowset <- ncdfFlowSet(flow_set, ncdfFile = "/loc/no-backup/ramey/HVTN/065/HVTN065.nc")
+
+
+# TODO: Create GatingSet from ncdfFlowSet
+# gs_HVTN065 <- 
+
+
