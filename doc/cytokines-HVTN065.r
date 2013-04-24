@@ -1,8 +1,7 @@
 #' # Cytokine Plots - HVTN065
 #'
-
-#' In this document for each HVTN 065 patient we plot densities for the
-#' following three cytokines:
+#' In this document for each HVTN 065 patient we plot densities and first
+#' derivatives for the following three cytokines:
 #'
 #' 1. TNFa
 #' 2. IFNg
@@ -19,12 +18,17 @@
 #' Also, for each patient sample, we consider the cytokines conditional on both
 #' CD4 and CD8. Hence, we have 60 (3 x 2 x 5 x 2) cytokine plots per patient.
 #'
+#' The densities are scaled with respect to the GAG stimulation.
+#'
+#' The plots below do not include SEB controls. These will be included soon
+#' after OpenCyto is applied.
+#'
 #' Our goal is to determine an improved gate for the cytokines.
 
 #+ setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE
 opts_chunk$set(fig.align = 'default', dev = 'png', message = FALSE, warning = FALSE,
                cache = FALSE, echo = FALSE, fig.path = 'figure/cytokines-HVTN065-',
-               cache.path = 'cache/cytokines-HVTN065-', fig.width = 18, fig.height = 18,
+               cache.path = 'cache/cytokines-HVTN065-', fig.width = 12, fig.height = 12,
                results = 'hide')
 
 #+ load_data  
@@ -33,6 +37,7 @@ library(ProjectTemplate)
 load.project()
 library(flowIncubator)
 library(openCyto)
+library(MASS)
 
 gs_HVTN065 <- load_gs("/loc/no-backup/ramey/HVTN/065/gs-cytokines")
 
@@ -55,10 +60,9 @@ pData_CD8$VISITNO <- factor(pData_CD8$VISITNO)
 pData_CD8$Stim <- factor(pData_CD8$Stim)
 pData(fs_CD8) <- pData_CD8
 
-
 #' ## CD4 Cytokines
 
-#+ CD4, fig.keep='all', results='hide'
+#+ CD4
 
 # For each patient ID, generates a plot of cytokines conditional on CD4.
 ggplot_list <- lapply(levels(pData(fs_CD4)$PTID), function(current_PTID) {
@@ -75,22 +79,62 @@ ggplot_list <- lapply(levels(pData(fs_CD4)$PTID), function(current_PTID) {
                      VISITNO = pData_fcs$VISITNO, TNFa = TNFa, IFNg, IL2)
   })
   cytokine_data <- do.call(rbind, cytokine_data)
+
   # BUG: For some reason, 'melt' is not renaming the variable. We fix
   # this manually.
   cytokine_data <- reshape2:::melt(cytokine_data, variable.name = "Cytokine")
   colnames(cytokine_data) <- gsub("variable", "Cytokine", colnames(cytokine_data))
 
-  p <- ggplot(cytokine_data, aes(x = value, color = Stim, group = Stim))
-  p <- p + geom_density() + facet_grid(VISITNO ~ Cytokine, scales = "free") + theme_bw()
-  p <- p + ggtitle(paste("CD4 Cytokines -- Patient:", current_PTID))
-  p
+  # Scales the data with respect to the GAG sample
+  # TODO: Per RG, the scaling should be respect to the negative peak of the SEB controls.
+  #   After gating is finished, update the scaling to negative peak of SEB controls.
+  stim_standardize <- "GAG-1-PTEG"
+  cytokine_data <- ddply(cytokine_data, .(VISITNO, Cytokine), function(x) {
+    # Calculates Huber estimates for the cytokine samples from reference
+    # stimulation
+    ref_huber <- huber(x[x$Stim == stim_standardize, ]$value)
+
+    # Standardizes the cytokine samples within stimulation group with respect to
+    # the reference stimulation group.
+    x <- ddply(x, .(Stim), transform, value = scale_huber(value))
+    x$value <- x$value * ref_huber$s
+    x
+  })
+
+  # Calculates a discrete derivative based on the kernel density estimate for
+  # each combination of VISITNO, Cytokin, and Stimulation
+  first_derivs <- ddply(cytokine_data, .(VISITNO, Cytokine, Stim), function(x) {
+    as.data.frame(deriv_smooth(x$value, n = 1024))
+  })
+
+  # Plot of cytokine densities for each stimulation group
+  p1 <- ggplot(cytokine_data, aes(x = value, color = Stim, group = Stim))
+  p1 <- p1 + geom_density() + theme_bw()
+  p1 <- p1 + facet_grid(VISITNO ~ Cytokine, scales = "free")
+  p1 <- p1 + ggtitle(paste("Scaled Cytokine Densities"))
+
+  # Plot of derivatives of smoothed densities for each stimulation group
+  p2 <- ggplot(first_derivs, aes(x = x, y = y, color = Stim, group = Stim))
+  p2 <- p2 + geom_line() + theme_bw()
+  p2 <- p2 + facet_grid(VISITNO ~ Cytokine, scales = "free")
+  p2 <- p2 + ggtitle(paste("First Derivatives")) + ylab("dy/dx")
+
+  # Creates a single plot containing cytokine densities and derivatives.
+  # The plot shares the legend.
+  # For more details, see Stack Overflow post: http://bit.ly/15J5nYT
+  p2_legend <- g_legend(p2)
+  grid.arrange(arrangeGrob(p1 + theme(legend.position="none"),
+                           p2 + theme(legend.position="none"),
+                           main = paste("CD4 Cytokines -- Patient:", current_PTID),
+                           nrow = 1),
+               p2_legend, nrow = 2, heights = c(10, 2))
 })
 
 lapply(ggplot_list, plot)
 
 #' ## CD8 Cytokines
 
-#+ CD8, fig.keep='all', results='hide'
+#+ CD8
 
 # For each patient ID, generates a plot of cytokines conditional on CD8.
 ggplot_list <- lapply(levels(pData(fs_CD8)$PTID), function(current_PTID) {
@@ -107,15 +151,53 @@ ggplot_list <- lapply(levels(pData(fs_CD8)$PTID), function(current_PTID) {
                      VISITNO = pData_fcs$VISITNO, TNFa = TNFa, IFNg, IL2)
   })
   cytokine_data <- do.call(rbind, cytokine_data)
+
   # BUG: For some reason, 'melt' is not renaming the variable. We fix
   # this manually.
   cytokine_data <- reshape2:::melt(cytokine_data, variable.name = "Cytokine")
   colnames(cytokine_data) <- gsub("variable", "Cytokine", colnames(cytokine_data))
 
-  p <- ggplot(cytokine_data, aes(x = value, color = Stim, group = Stim))
-  p <- p + geom_density() + facet_grid(VISITNO ~ Cytokine, scales = "free") + theme_bw()
-  p <- p + ggtitle(paste("CD8 Cytokines -- Patient:", current_PTID))
-  p
-})
+  # Scales the data with respect to the GAG sample
+  # TODO: Per RG, the scaling should be respect to the negative peak of the SEB controls.
+  #   After gating is finished, update the scaling to negative peak of SEB controls.
+  stim_standardize <- "GAG-1-PTEG"
+  cytokine_data <- ddply(cytokine_data, .(VISITNO, Cytokine), function(x) {
+    # Calculates Huber estimates for the cytokine samples from reference
+    # stimulation
+    ref_huber <- huber(x[x$Stim == stim_standardize, ]$value)
 
-lapply(ggplot_list, plot)
+    # Standardizes the cytokine samples within stimulation group with respect to
+    # the reference stimulation group.
+    x <- ddply(x, .(Stim), transform, value = scale_huber(value))
+    x$value <- x$value * ref_huber$s
+    x
+  })
+
+  # Calculates a discrete derivative based on the kernel density estimate for
+  # each combination of VISITNO, Cytokin, and Stimulation
+  first_derivs <- ddply(cytokine_data, .(VISITNO, Cytokine, Stim), function(x) {
+    as.data.frame(deriv_smooth(x$value, n = 1024))
+  })
+
+  # Plot of cytokine densities for each stimulation group
+  p1 <- ggplot(cytokine_data, aes(x = value, color = Stim, group = Stim))
+  p1 <- p1 + geom_density() + theme_bw()
+  p1 <- p1 + facet_grid(VISITNO ~ Cytokine, scales = "free")
+  p1 <- p1 + ggtitle(paste("Scaled Cytokine Densities"))
+
+  # Plot of derivatives of smoothed densities for each stimulation group
+  p2 <- ggplot(first_derivs, aes(x = x, y = y, color = Stim, group = Stim))
+  p2 <- p2 + geom_line() + theme_bw()
+  p2 <- p2 + facet_grid(VISITNO ~ Cytokine, scales = "free")
+  p2 <- p2 + ggtitle(paste("First Derivatives")) + ylab("dy/dx")
+
+  # Creates a single plot containing cytokine densities and derivatives.
+  # The plot shares the legend.
+  # For more details, see Stack Overflow post: http://bit.ly/15J5nYT
+  p2_legend <- g_legend(p2)
+  grid.arrange(arrangeGrob(p1 + theme(legend.position="none"),
+                           p2 + theme(legend.position="none"),
+                           main = paste("CD8 Cytokines -- Patient:", current_PTID),
+                           nrow = 1),
+               p2_legend, nrow = 2, heights = c(10, 2))
+})

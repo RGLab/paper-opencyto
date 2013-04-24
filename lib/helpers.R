@@ -302,3 +302,53 @@ strip_quantiles <- function(markers, quantiles = c("9950", "9990", "9999")) {
   markers
 }
 
+
+#' Scales a vector of data using the Huber robust estimator for mean and
+#' standard deviation
+#'
+#' This function is an analog to \code{\link{scale}} but using Huber robust
+#' estimators instead of the usual sample mean and standard deviation.
+#'
+#' @param x numeric vector
+#' @return numeric vector containing the scaled data
+scale_huber <- function(x) {
+  x <- as.vector(x)
+  huber_x <- huber(x)
+  as.vector(scale(x, center = huber_x$mu, scale = huber_x$s))
+}
+
+
+#' Computes discrete derivative of a vector based on its kernel density estimate
+#'
+#' Calculates the kernel density estimate (KDE) of \code{x} using
+#' \code{\link{density}} and then calculates the discrete derivative based on
+#' the KDE.
+#'
+#' Based on the following Stack Overflow post:
+#' http://bit.ly/Z4g68V
+#' 
+#' @param x numeric vector
+#' @param ... additional arguments passed to \code{\link{density}}
+#' @return list consisting of the sorted values in \code{x} with some centering
+#' as well as the discrete slope in \code{y}
+deriv_smooth <- function(x, ...) {
+  x <- as.vector(x)
+  density_x <- density(x, ...)
+  list(x = rowMeans(embed(density_x$x, 2)),
+       y = diff(density_x$y) / diff(density_x$x))
+}
+
+
+#' Extracts legend from ggplot2 object
+#'
+#' Code from Hadley Wickham:
+#' https://github.com/hadley/ggplot2/wiki/Share-a-legend-between-two-ggplot2-graphs
+#' 
+#' @param a.gplot a \code{ggplot2} object
+#' @return a \code{ggplot2} legend
+g_legend <- function(a.gplot) {
+  tmp <- ggplot_gtable(ggplot_build(a.gplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
