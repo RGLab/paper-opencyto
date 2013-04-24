@@ -143,7 +143,7 @@ logicle_trans <- openCyto:::estimateMedianLogicle(flow_set,
 # Applies the estimated transformation to the ncdfFlow set object
 flow_set <- transform(flow_set, logicle_trans)
 
-# Updates pData
+# Updates pData and varMetadata
 pData_HVTN065 <- subset(analysis_plan, select = c(FCS_file, PTID, ANTIGEN, VISITNO))
 colnames(pData_HVTN065) <- c("name", "PTID", "Stim", "VISITNO")
 pData_HVTN065$name <- sapply(strsplit(pData_HVTN065$name, "/"), tail, n = 1)
@@ -151,11 +151,16 @@ pData_HVTN065 <- base:::merge(pData(flow_set), pData_HVTN065, sort = FALSE)
 rownames(pData_HVTN065) <- pData_HVTN065$name
 pData(flow_set) <- pData_HVTN065
 
+var_meta <- varMetadata(phenoData(flow_set))
+var_meta[-1, ] <- rownames(var_meta)[-1]
+varMetadata(phenoData(flow_set)) <- var_meta
+
 # Create ncdfFlowSet object from flowSet
-# ncdf_flowset <- ncdfFlowSet(flow_set, ncdfFile = "/loc/no-backup/ramey/HVTN/065/HVTN065.nc")
+ncdf_flowset <- ncdfFlowSet(flow_set, ncdfFile = "/loc/no-backup/ramey/HVTN/065/HVTN065.nc")
 
 # Create GatingSet from ncdfFlowSet
-gs_HVTN065 <- GatingSet(flow_set)
+gs_HVTN065 <- GatingSet(ncdf_flowset)
 
 # Archives GatingSet
-save_gs(gs_HVTN065, path = "/loc/no-backup/ramey/HVTN/065/gating-set")
+# save_gs(gs_HVTN065, path = "/loc/no-backup/ramey/HVTN/065/gating-set")
+save_gs(gs_HVTN065, path = "/shared/silo_researcher/Gottardo_R/ramey_working/HVTN/065/gating_set")
