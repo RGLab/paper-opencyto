@@ -6,15 +6,12 @@ load.project()
 # Loads Gating Set
 gs_HVTN065 <- load_gs("/shared/silo_researcher/Gottardo_R/ramey_working/HVTN/065/gating_set")
 
-# Customizes the path where the GS is unarchived.
-# By default, /tmp is used and often can run out of space, due to the large nc files.
-archive_path <- '/loc/no-backup/ramey/HVTN/065/'
-
 # Loads the GatingTemplate from the CSV file.
 gating_template <- gatingTemplate("HVTN065-GatingTemplate.csv", "HVTN065")
 
 # Now we apply the automated pipeline to each gating set
-gating(gating_template, gs_HVTN065, prior_group = 'Stim', num_nodes = 12,
+set.seed(42)
+gating(gating_template, gs_HVTN065, prior_group = 'Stim', num_cores = 12,
        parallel_type = "multicore")
 
 # In our summary scripts we require that the 'Stim' string be unique within a
@@ -30,7 +27,8 @@ pData_HVTN065 <- subset(pData_HVTN065, select = c(name, PTID, Stim, VISITNO))
 pData(gs_HVTN065) <- pData_HVTN065
 
 # Archives the results
-save_gs(gs_HVTN065, path = "/loc/no-backup/ramey/HVTN/065/gating-results")
+save_gs(gs_HVTN065,
+        path = "/shared/silo_researcher/Gottardo_R/ramey_working/HVTN/065/gating-results")
 
 # Extracts the population statistics
 popstats_HVTN065 <- getPopStats(gs_HVTN065)

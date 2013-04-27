@@ -310,11 +310,41 @@ strip_quantiles <- function(markers, quantiles = c("9950", "9990", "9999")) {
 #' estimators instead of the usual sample mean and standard deviation.
 #'
 #' @param x numeric vector
+#' @param center logical value. Should \code{x} be centered?
+#' @param scale logical value. Should \code{x} be scaled?
 #' @return numeric vector containing the scaled data
-scale_huber <- function(x) {
+scale_huber <- function(x, center = TRUE, scale = TRUE) {
   x <- as.vector(x)
   huber_x <- huber(x)
-  as.vector(scale(x, center = huber_x$mu, scale = huber_x$s))
+
+  # If 'center' is set to TRUE, we center 'x' by the Huber robust location
+  # estimator.
+  center_x <- FALSE
+  if (center) {
+    center_x <- huber_x$mu
+  }
+
+  # If 'scale' is set to TRUE, we scale 'x' by the Huber robust standard
+  # deviation estimator.
+  scale_x <- FALSE
+  if (scale) {
+    scale_x <- huber_x$s
+  }
+
+  as.vector(base:::scale(x, center = center_x, scale = scale_x))
+}
+
+#' Centers a vector of data using the mode of the kernel density estimate
+#'
+#' @param x numeric vector
+#' @param ... additional arguments passed to \code{\link{density}}
+#' @return numeric vector containing the centered data
+center_mode <- function(x, ...) {
+  x <- as.vector(x)
+  density_x <- density(x)
+  mode <- density_x$x[which.max(density_x$y)]
+
+  as.vector(scale(x, center = mode, scale = FALSE))
 }
 
 

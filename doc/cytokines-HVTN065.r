@@ -18,7 +18,8 @@
 #' Also, for each patient sample, we consider the cytokines conditional on both
 #' CD4 and CD8. Hence, we have 60 (3 x 2 x 5 x 2) cytokine plots per patient.
 #'
-#' The densities are scaled with respect to the GAG stimulation.
+#' The kernel density estimates are first centered by their mode and
+#' then scaled with respect to the GAG stimulation.
 #'
 #' The plots below do not include SEB controls. These will be included soon
 #' after OpenCyto is applied.
@@ -26,9 +27,9 @@
 #' Our goal is to determine an improved gate for the cytokines.
 
 #+ setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE
-opts_chunk$set(fig.align = 'default', dev = 'png', message = FALSE, warning = FALSE,
+opts_chunk$set(fig.align = 'default', dev = 'png', message = FALSE, warning = FALSE, error = FALSE,
                cache = FALSE, echo = FALSE, fig.path = 'figure/cytokines-HVTN065-',
-               cache.path = 'cache/cytokines-HVTN065-', fig.width = 12, fig.height = 12,
+               cache.path = 'cache/cytokines-HVTN065-', fig.width = 18, fig.height = 18,
                results = 'hide')
 
 #+ load_data  
@@ -96,7 +97,12 @@ ggplot_list <- lapply(levels(pData(fs_CD4)$PTID), function(current_PTID) {
 
     # Standardizes the cytokine samples within stimulation group with respect to
     # the reference stimulation group.
-    x <- ddply(x, .(Stim), transform, value = scale_huber(value))
+
+    # First, centers the values by the mode of the kernel density estimate for
+    # the stimulation group. Then, scales by the Huber estimator of the standard
+    # deviation
+    x <- ddply(x, .(Stim), transform, value = center_mode(value))
+    x <- ddply(x, .(Stim), transform, value = scale_huber(value, center = FALSE))
     x$value <- x$value * ref_huber$s
     x
   })
