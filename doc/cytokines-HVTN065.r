@@ -29,7 +29,7 @@
 #+ setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE
 opts_chunk$set(fig.align = 'default', dev = 'png', message = FALSE, warning = FALSE, error = FALSE,
                cache = FALSE, echo = FALSE, fig.path = 'figure/cytokines-HVTN065-',
-               cache.path = 'cache/cytokines-HVTN065-', fig.width = 18, fig.height = 18,
+               cache.path = 'cache/cytokines-HVTN065-', fig.width = 24, fig.height = 15,
                results = 'hide')
 
 #+ load_data  
@@ -40,13 +40,13 @@ library(flowIncubator)
 library(openCyto)
 library(MASS)
 
-gs_HVTN065 <- load_gs("/loc/no-backup/ramey/HVTN/065/gs-cytokines")
+gs_HVTN065 <- load_gs("/shared/silo_researcher/Gottardo_R/ramey_working/HVTN/065/gating-results")
 
 #+ setup_data
  
 # Constructs flowSets for the samples after applying the CD4 and CD8 gates
-fs_CD4 <- getData(gs_HVTN065, which(getNodes(gs_HVTN065[[1]]) == "cd4"))
-fs_CD8 <- getData(gs_HVTN065, which(getNodes(gs_HVTN065[[1]]) == "cd8"))
+fs_CD4 <- getData(gs_HVTN065, "cd4")
+fs_CD8 <- getData(gs_HVTN065, "cd8")
 
 # Updates pData(...) to factors
 pData_CD4 <- pData(fs_CD4)
@@ -86,51 +86,100 @@ ggplot_list <- lapply(levels(pData(fs_CD4)$PTID), function(current_PTID) {
   cytokine_data <- reshape2:::melt(cytokine_data, variable.name = "Cytokine")
   colnames(cytokine_data) <- gsub("variable", "Cytokine", colnames(cytokine_data))
 
-  # Scales the data with respect to the GAG sample
-  # TODO: Per RG, the scaling should be respect to the negative peak of the SEB controls.
-  #   After gating is finished, update the scaling to negative peak of SEB controls.
-  stim_standardize <- "GAG-1-PTEG"
+  # Scales the data with respect to the negative component of the SEB control
+  # sample.
   cytokine_data <- ddply(cytokine_data, .(VISITNO, Cytokine), function(x) {
-    # Calculates Huber estimates for the cytokine samples from reference
-    # stimulation
-    ref_huber <- huber(x[x$Stim == stim_standardize, ]$value)
+    x_standardize <- x[x$Stim == "sebctrl", ]$value
+    sebctrl_peaks <- openCyto:::find_peaks(x_standardize, order = TRUE, adjust = 3)
+    neg_peak <- sebctrl_peaks[1]
+    pos_peak <- sebctrl_peaks[2]
+
+    # If two peaks are present, select cutpoint as mindensity
+    # Otherwise, select based on smoothed second derivative
+    if (!is.na(pos_peak)) {
+      valleys <- openCyto:::find_valleys(x_standardize, adjust = 2)
+      cutpoint <- valleys[findInterval(valleys, c(neg_peak, pos_peak)) == 1][1]
+    } else {
+      second_deriv_standardize <- second_deriv_smooth(x_standardize, n = 4096, adjust = 2)
+      second_deriv_standardize <- do.call(cbind.data.frame, second_deriv_standardize)
+
+      # Applies LOESS with minor smoothing to second derivative curve
+      loess_out <- loess(y ~ x, data = second_deriv_standardize, span = 0.2)
+
+      # Select cutpoint as first valley after peak
+      # Because the LOESS prediction is likely unequal to the negative peak found
+      # using openCyto, we find the first valley of the second derivative greater
+      # than the valley nearest to the negative_peak
+      x_sorted <- sort(x_standardize)
+      predict_loess <- predict(loess_out, x_sorted)
+      discrete_second_deriv <- diff(sign(diff(predict_loess)))
+      which_minima <- which(discrete_second_deriv == 2) + 1
+      valleys <- x_sorted[which_minima]
+      cutpoint <- valleys[which.min(abs(valleys - neg_peak)) + 1]
+    }
+
+    # Calculates standard deviation estimate for the negative-component
+    # observations that are greater than the negative peak.
+    x_pos <- x_standardize[findInterval(x_standardize, c(neg_peak, cutpoint)) == 1]
+    sd_neg <- sqrt(mean((x_pos - neg_peak)^2))
 
     # Standardizes the cytokine samples within stimulation group with respect to
     # the reference stimulation group.
-
     # First, centers the values by the mode of the kernel density estimate for
-    # the stimulation group. Then, scales by the Huber estimator of the standard
-    # deviation
+    # the stimulation group.
     x <- ddply(x, .(Stim), transform, value = center_mode(value))
-    x <- ddply(x, .(Stim), transform, value = scale_huber(value, center = FALSE))
-    x$value <- x$value * ref_huber$s
-    x
+
+    # For the reference stimulation group (i.e., SEB contrtols), we scale by the
+    # standard deviation of its negative component.
+    x_ref <- subset(x, Stim == "sebctrl")
+    x_ref$value <- x_ref$value / sd_neg
+
+    # Scales by the Huber estimator of the standard deviation and rescales with respect to the
+    # reference stimulation sample to put all stimulations on the same scale.
+    x_nonref <- ddply(subset(x, Stim != "sebctrl"), .(Stim), transform,
+                      value = scale_huber(value, center = FALSE))
+    x_nonref$value <- x_nonref$value * sd_neg
+
+    rbind(x_ref, x_nonref)
   })
 
   # Calculates a discrete derivative based on the kernel density estimate for
   # each combination of VISITNO, Cytokin, and Stimulation
   first_derivs <- ddply(cytokine_data, .(VISITNO, Cytokine, Stim), function(x) {
-    as.data.frame(deriv_smooth(x$value, n = 1024))
+    as.data.frame(deriv_smooth(x$value, n = 1024, adjust = 2))
+  })
+
+  # Calculates a discrete derivative based on the kernel density estimate for
+  # each combination of VISITNO, Cytokin, and Stimulation
+  second_derivs <- ddply(cytokine_data, .(VISITNO, Cytokine, Stim), function(x) {
+    as.data.frame(second_deriv_smooth(x$value, n = 1024, adjust = 2))
   })
 
   # Plot of cytokine densities for each stimulation group
   p1 <- ggplot(cytokine_data, aes(x = value, color = Stim, group = Stim))
   p1 <- p1 + geom_density() + theme_bw()
   p1 <- p1 + facet_grid(VISITNO ~ Cytokine, scales = "free")
-  p1 <- p1 + ggtitle(paste("Scaled Cytokine Densities"))
+  p1 <- p1 + ggtitle("Scaled Cytokine Densities")
 
   # Plot of derivatives of smoothed densities for each stimulation group
   p2 <- ggplot(first_derivs, aes(x = x, y = y, color = Stim, group = Stim))
   p2 <- p2 + geom_line() + theme_bw()
-  p2 <- p2 + facet_grid(VISITNO ~ Cytokine, scales = "free")
-  p2 <- p2 + ggtitle(paste("First Derivatives")) + ylab("dy/dx")
+  p2 <- p2 + facet_grid(VISITNO ~ Cytokine, scales = "free_x") + ylim(-1, 1)
+  p2 <- p2 + ggtitle("First Derivatives") + ylab("dy/dx")
+
+  # Plot of second derivatives of smoothed densities for each stimulation group
+  p3 <- ggplot(second_derivs, aes(x = x, y = y, color = Stim, group = Stim))
+  p3 <- p3 + geom_line() + theme_bw()
+  p3 <- p3 + facet_grid(VISITNO ~ Cytokine, scales = "free_x") + ylim(-1, 1)
+  p3 <- p3 + ggtitle("Second Derivatives") + ylab("d^2y/dx^2")
 
   # Creates a single plot containing cytokine densities and derivatives.
   # The plot shares the legend.
   # For more details, see Stack Overflow post: http://bit.ly/15J5nYT
   p2_legend <- g_legend(p2)
-  grid.arrange(arrangeGrob(p1 + theme(legend.position="none"),
-                           p2 + theme(legend.position="none"),
+  grid.arrange(arrangeGrob(p1 + theme(legend.position = "none"),
+                           p2 + theme(legend.position = "none"),
+                           p3 + theme(legend.position = "none"),
                            main = paste("CD4 Cytokines -- Patient:", current_PTID),
                            nrow = 1),
                p2_legend, nrow = 2, heights = c(10, 2))
@@ -163,47 +212,103 @@ ggplot_list <- lapply(levels(pData(fs_CD8)$PTID), function(current_PTID) {
   cytokine_data <- reshape2:::melt(cytokine_data, variable.name = "Cytokine")
   colnames(cytokine_data) <- gsub("variable", "Cytokine", colnames(cytokine_data))
 
-  # Scales the data with respect to the GAG sample
-  # TODO: Per RG, the scaling should be respect to the negative peak of the SEB controls.
-  #   After gating is finished, update the scaling to negative peak of SEB controls.
-  stim_standardize <- "GAG-1-PTEG"
+  # Scales the data with respect to the negative component of the SEB control
+  # sample.
   cytokine_data <- ddply(cytokine_data, .(VISITNO, Cytokine), function(x) {
-    # Calculates Huber estimates for the cytokine samples from reference
-    # stimulation
-    ref_huber <- huber(x[x$Stim == stim_standardize, ]$value)
+    x_standardize <- x[x$Stim == "sebctrl", ]$value
+    sebctrl_peaks <- openCyto:::find_peaks(x_standardize, order = TRUE, adjust = 3)
+    neg_peak <- sebctrl_peaks[1]
+    pos_peak <- sebctrl_peaks[2]
+
+    # If two peaks are present, select cutpoint as mindensity
+    # Otherwise, select based on smoothed second derivative
+    if (!is.na(pos_peak)) {
+      valleys <- openCyto:::find_valleys(x_standardize, adjust = 2)
+      cutpoint <- valleys[findInterval(valleys, c(neg_peak, pos_peak)) == 1][1]
+    } else {
+      second_deriv_standardize <- second_deriv_smooth(x_standardize, n = 4096, adjust = 2)
+      second_deriv_standardize <- do.call(cbind.data.frame, second_deriv_standardize)
+
+      # Applies LOESS with minor smoothing to second derivative curve
+      loess_out <- loess(y ~ x, data = second_deriv_standardize, span = 0.2)
+
+      # Select cutpoint as first valley after peak
+      # Because the LOESS prediction is likely unequal to the negative peak found
+      # using openCyto, we find the first valley of the second derivative greater
+      # than the valley nearest to the negative_peak
+      x_sorted <- sort(x_standardize)
+      predict_loess <- predict(loess_out, x_sorted)
+      discrete_second_deriv <- diff(sign(diff(predict_loess)))
+      which_minima <- which(discrete_second_deriv == 2) + 1
+      valleys <- x_sorted[which_minima]
+      cutpoint <- valleys[which.min(abs(valleys - neg_peak)) + 1]
+    }
+
+    # Calculates standard deviation estimate for the negative-component
+    # observations that are greater than the negative peak.
+    x_pos <- x_standardize[findInterval(x_standardize, c(neg_peak, cutpoint)) == 1]
+    sd_neg <- sqrt(mean((x_pos - neg_peak)^2))
 
     # Standardizes the cytokine samples within stimulation group with respect to
     # the reference stimulation group.
-    x <- ddply(x, .(Stim), transform, value = scale_huber(value))
-    x$value <- x$value * ref_huber$s
-    x
+    # First, centers the values by the mode of the kernel density estimate for
+    # the stimulation group.
+    x <- ddply(x, .(Stim), transform, value = center_mode(value))
+
+    # For the reference stimulation group (i.e., SEB contrtols), we scale by the
+    # standard deviation of its negative component.
+    x_ref <- subset(x, Stim == "sebctrl")
+    x_ref$value <- x_ref$value / sd_neg
+
+    # Scales by the Huber estimator of the standard deviation and rescales with respect to the
+    # reference stimulation sample to put all stimulations on the same scale.
+    x_nonref <- ddply(subset(x, Stim != "sebctrl"), .(Stim), transform,
+                      value = scale_huber(value, center = FALSE))
+    x_nonref$value <- x_nonref$value * sd_neg
+
+    rbind(x_ref, x_nonref)
   })
 
   # Calculates a discrete derivative based on the kernel density estimate for
   # each combination of VISITNO, Cytokin, and Stimulation
   first_derivs <- ddply(cytokine_data, .(VISITNO, Cytokine, Stim), function(x) {
-    as.data.frame(deriv_smooth(x$value, n = 1024))
+    as.data.frame(deriv_smooth(x$value, n = 1024, adjust = 2))
+  })
+
+  # Calculates a discrete derivative based on the kernel density estimate for
+  # each combination of VISITNO, Cytokin, and Stimulation
+  second_derivs <- ddply(cytokine_data, .(VISITNO, Cytokine, Stim), function(x) {
+    as.data.frame(second_deriv_smooth(x$value, n = 1024, adjust = 2))
   })
 
   # Plot of cytokine densities for each stimulation group
   p1 <- ggplot(cytokine_data, aes(x = value, color = Stim, group = Stim))
   p1 <- p1 + geom_density() + theme_bw()
   p1 <- p1 + facet_grid(VISITNO ~ Cytokine, scales = "free")
-  p1 <- p1 + ggtitle(paste("Scaled Cytokine Densities"))
+  p1 <- p1 + ggtitle("Scaled Cytokine Densities")
 
   # Plot of derivatives of smoothed densities for each stimulation group
   p2 <- ggplot(first_derivs, aes(x = x, y = y, color = Stim, group = Stim))
   p2 <- p2 + geom_line() + theme_bw()
-  p2 <- p2 + facet_grid(VISITNO ~ Cytokine, scales = "free")
-  p2 <- p2 + ggtitle(paste("First Derivatives")) + ylab("dy/dx")
+  p2 <- p2 + facet_grid(VISITNO ~ Cytokine, scales = "free_x") + ylim(-1, 1)
+  p2 <- p2 + ggtitle("First Derivatives") + ylab("dy/dx")
+
+  # Plot of second derivatives of smoothed densities for each stimulation group
+  p3 <- ggplot(second_derivs, aes(x = x, y = y, color = Stim, group = Stim))
+  p3 <- p3 + geom_line() + theme_bw()
+  p3 <- p3 + facet_grid(VISITNO ~ Cytokine, scales = "free_x") + ylim(-1, 1)
+  p3 <- p3 + ggtitle("Second Derivatives") + ylab("d^2y/dx^2")
 
   # Creates a single plot containing cytokine densities and derivatives.
   # The plot shares the legend.
   # For more details, see Stack Overflow post: http://bit.ly/15J5nYT
   p2_legend <- g_legend(p2)
-  grid.arrange(arrangeGrob(p1 + theme(legend.position="none"),
-                           p2 + theme(legend.position="none"),
+  grid.arrange(arrangeGrob(p1 + theme(legend.position = "none"),
+                           p2 + theme(legend.position = "none"),
+                           p3 + theme(legend.position = "none"),
                            main = paste("CD8 Cytokines -- Patient:", current_PTID),
                            nrow = 1),
                p2_legend, nrow = 2, heights = c(10, 2))
 })
+
+lapply(ggplot_list, plot)

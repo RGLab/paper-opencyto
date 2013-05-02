@@ -347,6 +347,22 @@ center_mode <- function(x, ...) {
   as.vector(scale(x, center = mode, scale = FALSE))
 }
 
+#' Computes discrete derivative of a vector based on its kernel density estimate
+#'
+#' Calculates the kernel density estimate (KDE) of \code{x} using
+#' \code{\link{density}} and then calculates the discrete derivative based on
+#' the KDE.
+#'
+#' Based on the following Stack Overflow post:
+#' http://bit.ly/Z4g68V
+#' 
+#' @param obj an object returned from \code{\link{density}}
+#' @return list consisting of the sorted values in \code{x} with some centering
+#' as well as the discrete slope in \code{y}
+deriv_smooth <- function(obj) {
+  list(x = rowMeans(embed(obj$x, 2)),
+       y = diff(obj$y) / diff(obj$x))
+}
 
 #' Computes discrete derivative of a vector based on its kernel density estimate
 #'
@@ -357,17 +373,22 @@ center_mode <- function(x, ...) {
 #' Based on the following Stack Overflow post:
 #' http://bit.ly/Z4g68V
 #' 
-#' @param x numeric vector
-#' @param ... additional arguments passed to \code{\link{density}}
+#' @param obj an object returned from \code{\link{density}}
 #' @return list consisting of the sorted values in \code{x} with some centering
 #' as well as the discrete slope in \code{y}
-deriv_smooth <- function(x, ...) {
-  x <- as.vector(x)
-  density_x <- density(x, ...)
-  list(x = rowMeans(embed(density_x$x, 2)),
-       y = diff(density_x$y) / diff(density_x$x))
-}
+second_deriv_smooth <- function(obj, smooth = FALSE, span = 0.2) {
+  deriv_out <- deriv_smooth(obj)
+  second_deriv <- list(x = rowMeans(embed(deriv_out$x, 2)),
+                       y = diff(deriv_out$y) / diff(deriv_out$x))
 
+  # If selected, applies LOESS with minor smoothing to second derivative curve
+  if (smooth) {
+    loess_out <- loess(y ~ x, data = second_deriv, span = span)
+    second_deriv$y <- predict(loess_out, second_deriv$x)
+  }
+
+  second_deriv  
+}
 
 #' Extracts legend from ggplot2 object
 #'
@@ -382,3 +403,105 @@ g_legend <- function(a.gplot) {
   legend <- tmp$grobs[[leg]]
   return(legend)
 }
+
+#' Look up channel name for cytokine
+#'
+#' @param x cytokine marker name
+#' @return the corresponding channel name
+cytokine2channel <- function(x) {
+  switch(x,
+         TNFa = "Alexa 680-A",
+         IFNg = "PE Cy7-A",
+         IL2 = "PE Green laser-A"
+  )
+}
+
+#' Standardizes a cytokine data with respect to a reference stimulation group
+#' 
+#' @param x melted data.frame containing cytokine data for each stimulation
+#' group (column labeled 'Stim')
+#' @param ref_stimulation reference stimulation group
+#' @return data.frame with cytokine data standardized with respect to the
+#' reference stimulation group
+standardize_cytokines <- function(x, ref_stimulation = "sebctrl") {
+  # Scales the data with respect to the negative component of the SEB control
+  # sample.
+  x_standardize <- x[x$Stim == ref_stimulation, ]$value
+  ref_peaks <- openCyto:::find_peaks(x_standardize, order = TRUE, adjust = 3)
+  ref_peaks <- ref_peaks[ref_peaks >= 0]
+  neg_peak <- ref_peaks[1]
+  pos_peak <- ref_peaks[2]
+
+  # If two peaks are present, select cutpoint as mindensity
+  # Otherwise, select based on smoothed second derivative
+  if (!is.na(pos_peak)) {
+    valleys <- openCyto:::find_valleys(x_standardize, adjust = 2)
+    cutpoint <- valleys[findInterval(valleys, c(neg_peak, pos_peak)) == 1][1]
+  } else {
+    second_deriv_standardize <- second_deriv_smooth(x_standardize, n = 4096, adjust = 2)
+    second_deriv_standardize <- do.call(cbind.data.frame, second_deriv_standardize)
+
+    # Applies LOESS with minor smoothing to second derivative curve
+    loess_out <- loess(y ~ x, data = second_deriv_standardize, span = 0.2)
+
+    # Select cutpoint as first valley after peak
+    # Because the LOESS prediction is likely unequal to the negative peak found
+    # using openCyto, we find the first valley of the second derivative greater
+    # than the valley nearest to the negative_peak
+    x_sorted <- sort(x_standardize)
+    predict_loess <- predict(loess_out, x_sorted)
+    discrete_second_deriv <- diff(sign(diff(predict_loess)))
+    which_minima <- which(discrete_second_deriv == 2) + 1
+    valleys <- x_sorted[which_minima]
+    cutpoint <- valleys[which.min(abs(valleys - neg_peak)) + 1]
+  }
+
+  # Calculates standard deviation estimate for the negative-component
+  # observations that are greater than the negative peak.
+  x_pos <- x_standardize[findInterval(x_standardize, c(neg_peak, cutpoint)) == 1]
+  sd_neg <- sqrt(mean((x_pos - neg_peak)^2))
+
+  # Standardizes the cytokine samples within stimulation group with respect to
+  # the reference stimulation group.
+  # First, centers the values by the mode of the kernel density estimate for
+  # the stimulation group.
+  x <- tapply(x$value, x$Stim, center_mode)
+
+  # Scales the nonreference stimulation groups by their Huber estimator of the
+  # standard deviation and rescales with respect to the reference stimulation
+  # sample to put all stimulations on the same scale.
+  for(stim in names(x)[!grepl(ref_stimulation, names(x))]) {
+    x[[stim]] <- scale_huber(x[[stim]], center = FALSE)
+  }
+
+  # For the reference stimulation group (i.e., SEB controls), we scale by the
+  # standard deviation of its negative component instead of the Huber estimator.
+  x[[ref_stimulation]] <- x[[ref_stimulation]] / sd_neg
+
+  x <- melt(lapply(x, identity))
+  colnames(x) <- c("value", "Stim")
+  x
+}
+
+#' Reads the specified cytokine from a gating set
+#' @param gs gating set object
+#' @param PTID patient ID
+#' @param VISITNO patient visit number
+#' @param tcells which T-cell type?
+#' @param cytokine which cytokine?
+#' @return a data.frame with the appropriate cytokine data
+read_cytokines <- function(gs, PTID, VISITNO = c("2", "12"), tcells = c("cd4", "cd8"),
+                           cytokine = c("TNFa", "IFNg", "IL2")) {
+  pData_gs <- pData(gs)
+  pData_gs <- pData_gs[pData_gs$PTID == PTID & pData_gs$VISITNO == VISITNO, ]
+
+  x <- lapply(seq_along(pData_gs$name), function(i) {
+    flow_set <- getData(gs[pData_gs$name[i]], tcells)
+    cbind("Stim" = as.character(pData_gs$Stim[i]), "value" = exprs(flow_set[[1]])[, cytokine2channel(cytokine)])
+  })
+  x <- do.call(rbind, x)
+  x <- data.frame(x, stringsAsFactors = FALSE)
+  x$value <- as.numeric(x$value)
+  x
+}
+

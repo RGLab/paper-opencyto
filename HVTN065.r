@@ -7,7 +7,7 @@ load.project()
 gs_HVTN065 <- load_gs("/shared/silo_researcher/Gottardo_R/ramey_working/HVTN/065/gating_set")
 
 # Loads the GatingTemplate from the CSV file.
-gating_template <- gatingTemplate("HVTN065-GatingTemplate.csv", "HVTN065")
+gating_template <- gatingTemplate("gt-HVTN065.csv", "HVTN065")
 
 # Now we apply the automated pipeline to each gating set
 set.seed(42)

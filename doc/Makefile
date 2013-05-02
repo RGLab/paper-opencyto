@@ -11,7 +11,8 @@ REPORTS= quantiles-summary-HVTN065.html cytokines-HVTN065.html
 all: $(REPORTS) 
 
 clean:
-	rm -f *.bbl *.blg *.aux *.out *.log *.spl *tikzDictionary demo* *.md *.Rmd
+	rm -f quantiles-summary-HVTN065.md quantiles-summary-HVTN065.Rmd
+	rm -f cytokines-HVTN065.md cytokines-HVTN065.Rmd
 
 %.html: %.r
 	R -e "library(knitr); spin('$*.r')"
