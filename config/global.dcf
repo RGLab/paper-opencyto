@@ -1,8 +1,8 @@
 data_loading: on
 cache_loading: on
-munging: on
+munging: off
 logging: off
 load_libraries: on
-libraries: reshape2, plyr, ggplot2, stringr, lubridate, xtable, flowStats, flowWorkspace, flowClust
+libraries: reshape2, plyr, ggplot2, stringr, lubridate, xtable, glmnet, ROCR, doMC, gtools, data.table, flowWorkspace, flowIncubator, openCyto, MASS
 as_factors: on
 data_tables: off
