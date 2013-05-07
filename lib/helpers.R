@@ -442,7 +442,7 @@ density_cytokines <- function(x, ...) {
 }
 
 #' Constructs the derivatives of the kernel density estimates for each
-#' stimulation group for a ' given set of cytokine data
+#' stimulation group for a given set of cytokine data
 #'
 #' For guidance on selecting the bandwidth, see this post:
 #' http://stats.stackexchange.com/questions/33918/is-there-an-optimal-bandwidth-for-a-kernel-density-estimator-of-derivatives
