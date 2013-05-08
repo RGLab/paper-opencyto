@@ -38,8 +38,14 @@ shinyUI(pageWithSidebar(
          sliderInput(inputId = "cutpoint_tol", label = "Cutpoint Tolerance",
                 min = -6, max = -1, value = -3, format = "1e#")
       ),
-      checkboxInput(inputId = "gates",
-                    label = strong("Upstream Gates"),
+      checkboxInput(inputId = "TNFa_gates",
+                    label = strong("TNFa Gates"),
+                    value = FALSE),
+      checkboxInput(inputId = "IFNg_gates",
+                    label = strong("IFNg Gates"),
+                    value = FALSE),
+      checkboxInput(inputId = "IL2_gates",
+                    label = strong("IL2 Gates"),
                     value = FALSE)
     )
   ),
@@ -53,9 +59,17 @@ shinyUI(pageWithSidebar(
       p(strong("Second Derivatives")),
       plotOutput("secondDerivPlot")
     ),
-    conditionalPanel(condition = "input.gates == true",
-      p(strong("Upstream Gates (Inactive currently)")),
-      plotOutput("gatesPlot")
+    conditionalPanel(condition = "input.TNFa_gates == true",
+      p(strong("TNFa Gates")),
+      plotOutput("TNFaGatesPlot")
+    ),
+    conditionalPanel(condition = "input.IFNg_gates == true",
+      p(strong("IFNg Gates")),
+      plotOutput("IFNgGatesPlot")
+    ),
+    conditionalPanel(condition = "input.IL2_gates == true",
+      p(strong("IL2 Gates")),
+      plotOutput("IL2GatesPlot")
     )
   )
 ))

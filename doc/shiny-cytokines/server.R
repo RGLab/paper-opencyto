@@ -1,4 +1,8 @@
 shinyServer(function(input, output) {
+  PTID_fcs <- reactive({
+    subset(pData_HVTN065, PTID == input$PTID)$name
+  })
+
   cytokine_summary <- reactive({
     subset(cytokine_densities, PTID == input$PTID & tcells == input$tcells)
   })
@@ -82,8 +86,37 @@ shinyServer(function(input, output) {
     plot(p3)
   })
 
-#  output$gatesPlot <- renderPlot({
-#    print(plotGate(gs_HVTN065[PTID_fcs()], lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
-#  })
+  output$TNFaGatesPlot <- renderPlot({
+    if (input$TNFa_gates) {
+      fcs_files <- PTID_fcs()
+      tcells <- input$tcells
+      print(plotGate(gs_HVTN065[fcs_files], paste(tcells, "TNFa", sep = "/"),
+                     lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
+    } else {
+      return(NULL)
+    }
+  })
+
+  output$IFNgGatesPlot <- renderPlot({
+    if (input$IFNg_gates) {
+      fcs_files <- PTID_fcs()
+      tcells <- input$tcells
+      print(plotGate(gs_HVTN065[fcs_files], paste(tcells, "IFNg", sep = "/"),
+                     lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
+    } else {
+      return(NULL)
+    }
+  })
+
+  output$IL2GatesPlot <- renderPlot({
+    if (input$IL2_gates) {
+      fcs_files <- PTID_fcs()
+      tcells <- input$tcells
+      print(plotGate(gs_HVTN065[fcs_files], paste(tcells, "IL2", sep = "/"),
+                     lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
+    } else {
+      return(NULL)
+    }
+  })
 
 })
