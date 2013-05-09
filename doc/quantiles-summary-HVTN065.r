@@ -55,12 +55,9 @@ rownames_popstats <- rownames(popstats_HVTN065)
 # Updates all cytokine combinations having the name of the form "cd4/TNFa" to "TNFa"
 which_combo <- grep("&", rownames_popstats)
 rownames_combo <- rownames_popstats[which_combo]
-rownames_combo <- gsub("cd4/TNFa", "TNFa", rownames_combo)
-rownames_combo <- gsub("cd8/TNFa", "TNFa", rownames_combo)
-rownames_combo <- gsub("cd4/IFNg", "IFNg", rownames_combo)
-rownames_combo <- gsub("cd8/IFNg", "IFNg", rownames_combo)
-rownames_combo <- gsub("cd4/IL2", "IL2", rownames_combo)
-rownames_combo <- gsub("cd8/IL2", "IL2", rownames_combo)
+rownames_combo <- gsub("cd[48]:TNFa", "TNFa", rownames_combo)
+rownames_combo <- gsub("cd[48]:IFNg", "IFNg", rownames_combo)
+rownames_combo <- gsub("cd[48]:IL2", "IL2", rownames_combo)
 rownames_popstats[which_combo] <- rownames_combo
 
 # Updates all cytokines gates to the form "cd4:TNFa"
@@ -75,30 +72,17 @@ rownames_noncytokines <- rownames_popstats[-which_cytokines]
 rownames_noncytokines <- sapply(strsplit(rownames_noncytokines, "/"), tail, n = 1)
 rownames_popstats[-which_cytokines] <- rownames_noncytokines
 
-# Reformats cytokine-marker combinations
-# The cytokine markers currently have the form:
-# !TNFa9950&IFNg9999&IL29990
-# We update them to have the form:
-# TNFa9950-IFNg9999+IL29990+
-TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
+# Reformats cytokine-marker combinations:
+# !TNFa&IFNg&IL2 => TNFa-IFNg+IL2+
+rownames_popstats <- gsub("TNFa", "TNFa+", rownames_popstats)
+rownames_popstats <- gsub("!TNFa\\+", "TNFa-", rownames_popstats)
 
-for (quant in TNFa) {
-  quant <- paste0("TNFa", quant)
-  rownames_popstats <- gsub(paste0(quant), paste0(quant, "+"), rownames_popstats)
-  rownames_popstats <- gsub(paste0("!", quant, "\\+"), paste0(quant, "-"), rownames_popstats)
-}
+rownames_popstats <- gsub("IFNg", "IFNg+", rownames_popstats)
+rownames_popstats <- gsub("!IFNg\\+", "IFNg-", rownames_popstats)
 
-for (quant in IFNg) {
-  quant <- paste0("IFNg", quant)
-  rownames_popstats <- gsub(paste0(quant), paste0(quant, "+"), rownames_popstats)
-  rownames_popstats <- gsub(paste0("!", quant, "\\+"), paste0(quant, "-"), rownames_popstats)
-}
+rownames_popstats <- gsub("IL2", "IL2+", rownames_popstats)
+rownames_popstats <- gsub("!IL2\\+", "IL2-", rownames_popstats)
 
-for (quant in IL2) {
-  quant <- paste0("IL2", quant)
-  rownames_popstats <- gsub(paste0(quant), paste0(quant, "+"), rownames_popstats)
-  rownames_popstats <- gsub(paste0("!", quant, "\\+"), paste0(quant, "-"), rownames_popstats)
-}
 rownames_popstats <- gsub("&", "", rownames_popstats)
 
 # Updates popstats rownames
