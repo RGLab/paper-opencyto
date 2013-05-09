@@ -123,118 +123,38 @@ rownames(popstats_HVTN065) <- rownames_popstats
 # pre-vaccine, otherwise if d < threshold classify sample 1 as pre-vaccine and
 # sample 2 as post-vaccine, otherwise mark them as unclassifiable."
 
-# Loop through each cytokine combination and construct matrix of features
+# Computes the paired classification results.
+# The classification accuracies computed use a probability threshold of 0 (i.e., d = 0).
+
+# TODO: After gating memory issue is resolved, comptue summaries for each tolerance value.
+#   We may need to grab some of the previous code used for quantiles.
 set.seed(42)
-
-# Extracts the population statistics for the markers upstream (i.e., the gates
-# before the cytokines)
-which_cytokines <- grep("cd[48]:", rownames_popstats)
-popstats_upstream <- popstats_HVTN065[-which_cytokines, ]
-
-TNFa <- IFNg <- IL2 <- c("9950", "9990", "9999")
-
-cytokine_combinations <- expand.grid(TNFa = TNFa, IFNg = IFNg, IL2 = IL2,
-                                     stringsAsFactors = FALSE)
-# To speed up the processing, we use mclapply with 'num_cores' cores.
-num_cores <- 12
-
-results_paired <- mclapply(seq_len(nrow(cytokine_combinations)), function(i) {
-  cyto_quantiles <- cytokine_combinations[i, ]
-
-  TNFa <- paste0("TNFa", cyto_quantiles$TNFa)
-  IFNg <- paste0("IFNg", cyto_quantiles$IFNg)
-  IL2 <- paste0("IL2", cyto_quantiles$IL2)
-
-  # Constructs a lookup table for the current cytokine quantiles
-  cytokines <- c(TNFa, IFNg, IL2)
-  cytokines <- c(paste0("cd4:", cytokines), paste0("cd8:", cytokines))
-
-  # Constructs a lookup table of the cytokine doubles for the current quantile
-  # combination
-  cytokine_doubles <- polyfunction_nodes(c(IFNg, IL2))
-  cytokine_doubles <- c(paste0("cd4:", cytokine_doubles),
-                        paste0("cd8:", cytokine_doubles))
-
-  # Constructs a lookup table of the cytokine triples for the current quantile
-  # combination
-  cytokine_triples <- polyfunction_nodes(c(TNFa, IFNg, IL2))
-  cytokine_triples <- c(paste0("cd4:", cytokine_triples),
-                        paste0("cd8:", cytokine_triples))
-
-  # Extracts the population statistics for the current cytokine quantiles and
-  # combinations
-  popstats_cytokines <- popstats_HVTN065[which(rownames_popstats %in% cytokines), ]
-  popstats_doubles <- popstats_HVTN065[which(rownames_popstats %in% cytokine_doubles), ]
-  popstats_triples <- popstats_HVTN065[which(rownames_popstats %in% cytokine_triples), ]
-
-  # The population statistics upstream and the current cytokine quantiles
-  popstats_combo <- rbind(popstats_upstream, popstats_cytokines, popstats_doubles,
-                          popstats_triples)
-
-  classification_summary(popstats_combo, treatment_info, pdata = pData_HVTN065,
-                         paired = TRUE, prob_threshold = 0)
-}, mc.cores = num_cores)
-
-cytokine_combos <- lapply(seq_len(nrow(cytokine_combinations)), function(i) {
-  cyto_combo <- cytokine_combinations[i, ]
-  paste(cyto_combo, collapse = ".")
-})
-names(results_paired) <- do.call(c, cytokine_combos)
+GAG_results <- classification_summary(popstats_HVTN065, treatment_info,
+                                      pData_HVTN065, stimulation = "GAG-1-PTEG")
+ENV_results <- classification_summary(popstats_HVTN065, treatment_info,
+                                      pData_HVTN065, stimulation = "ENV-1-PTEG")
 
 #+ classification_results_paired
 
-# Extracts the classification accuracies for each cytokine combination.
-accuracy_results <- lapply(results_paired, function(x) x$accuracy)
-accuracy_results <- do.call(rbind.data.frame, accuracy_results)
-
-accuracy_results <- cbind(cytokine_combinations, accuracy_results)
-rownames(accuracy_results) <- NULL
-
-m_accuracy <- melt(accuracy_results, variable.name = "Treatment_Stimulation",
-                   value.name = "Accuracy")
-m_accuracy$Treatment_Stimulation <- as.character(m_accuracy$Treatment_Stimulation)
-
-m_accuracy$Stimulation <- "GAG"
-m_accuracy$Stimulation <- with(m_accuracy,
-                               replace(Stimulation, grep("^ENV", Treatment_Stimulation), "ENV"))
-
-m_accuracy$Treatment <- "Treatment"
-m_accuracy$Treatment <- with(m_accuracy,
-                             replace(Treatment, grep("placebo", Treatment_Stimulation), "Placebo"))
-
-cytokine_labels <- lapply(seq_len(nrow(m_accuracy)), function(i) {
-  cyto_combo <- m_accuracy[i, ]
-  cyto_combo <- as.numeric(c(cyto_combo$TNFa[1], cyto_combo$IFNg[1], cyto_combo$IL2[1])) / 1e4
-  paste(cyto_combo, collapse = "\n")
-})
-m_accuracy$Cytokine_Combination <- do.call(c, cytokine_labels)
+# Constructs a ggplot2-friendly results data frame
+accuracy_results <- rbind.data.frame(unlist(GAG_results$accuracy), unlist(ENV_results$accuracy))
+colnames(accuracy_results) <- c("treatment", "placebo")
+accuracy_results$Stimulation <- c("GAG-1-PTEG", "ENV-1-PTEG")
+m_accuracy <- melt(accuracy_results)
+colnames(m_accuracy) <- c("Stimulation", "Treatment", "Accuracy")
 
 #+ classification_results_figure, results='asis'
 
-p <- ggplot(m_accuracy, aes(x = Cytokine_Combination, fill = Treatment))
+p <- ggplot(m_accuracy, aes(x = Stimulation, fill = Treatment))
 p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
-p <- p + facet_grid(Stimulation ~ .) + ylim(0, 1)
-p <- p + xlab("Cytokine Quantiles (TNFa, IFNg, IL2)") + ylab("Classification Accuracy")
-p <- p + ggtitle("Cytokine-Quantile Classification Accuracy of Visit Numbers Paired by Patient") + theme_bw()
+p <- p + ylim(0, 1)
+p <- p + xlab("Stimulation Group") + ylab("Classification Accuracy")
+p <- p + ggtitle("Classification Accuracy of Visit Numbers Paired by Patient") + theme_bw()
 p <- p + theme(plot.title  = element_text(size = 18))
 p <- p + theme(strip.text.y = element_text(size = 14))
 p + theme(axis.text = element_text(size = 12)) + theme(axis.title = element_text(size = 16))
 
-#+ classification_results_table, results='asis'
 
-# Extracts the classification accuracies for each cytokine combination.
-accuracy_results <- lapply(results_paired, function(x) x$accuracy)
-accuracy_results <- do.call(rbind.data.frame, accuracy_results)
-
-cytokine_combinations_numeric <- apply(cytokine_combinations, 2, function(x) {
-  as.numeric(x) / 1e4
-})
-
-accuracy_results_numeric <- cbind(cytokine_combinations_numeric, accuracy_results)
-rownames(accuracy_results_numeric) <- NULL
-
-print(xtable(accuracy_results_numeric, digits = 4), include.rownames = FALSE, type = "html")
- 
 
 
 
