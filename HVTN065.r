@@ -2,7 +2,7 @@ library(ProjectTemplate)
 load.project()
 
 # Loads Gating Set
-gs_HVTN065 <- load_gs("/shared/silo_researcher/Gottardo_R/ramey_working/HVTN/065/gating_set")
+gs_HVTN065 <- load_gs("/loc/no-backup/ramey/HVTN/065/gating-set/")
 
 # Loads the GatingTemplate from the CSV file.
 gating_template <- gatingTemplate("gt-HVTN065.csv", "HVTN065")
@@ -31,8 +31,7 @@ pData(gs_HVTN065) <- pData_HVTN065
 
 
 # Archives the results
-save_gs(gs_HVTN065,
-        path = "/shared/silo_researcher/Gottardo_R/ramey_working/HVTN/065/gating-results")
+save_gs(gs_HVTN065, path = "/loc/no-backup/ramey/HVTN/065/gating-results")
 
 # Extracts the population statistics
 popstats_HVTN065 <- getPopStats(gs_HVTN065)

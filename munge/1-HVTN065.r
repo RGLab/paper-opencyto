@@ -136,12 +136,9 @@ for (i in seq.int(2, length(fs_list))) {
   flow_set <- rbind2(flow_set, fs_list[[i]])
 }
 
-# Determines transformation for all channels except for "Time" and the sidescatter channels
-logicle_trans <- openCyto:::estimateMedianLogicle(flow_set,
-                                                  channels = common_channels[-(1:4)])
-
-# Applies the estimated transformation to the ncdfFlow set object
-flow_set <- transform(flow_set, logicle_trans)
+# Removes the list of large flowSet objects from memory before transforming.
+rm(fs_list)
+gc(reset = TRUE)
 
 # Updates pData and varMetadata
 pData_HVTN065 <- subset(analysis_plan, select = c(FCS_file, PTID, ANTIGEN, VISITNO))
@@ -155,12 +152,23 @@ var_meta <- varMetadata(phenoData(flow_set))
 var_meta[-1, ] <- rownames(var_meta)[-1]
 varMetadata(phenoData(flow_set)) <- var_meta
 
+# Determines transformation for all channels except for "Time" and the sidescatter channels
+logicle_trans <- openCyto:::estimateMedianLogicle(flow_set,
+                                                  channels = common_channels[-(1:4)])
+
 # Create ncdfFlowSet object from flowSet
 ncdf_flowset <- ncdfFlowSet(flow_set, ncdfFile = "/loc/no-backup/ramey/HVTN/065/HVTN065.nc")
 
+# Removes the list of large flowSet objects from memory before transforming.
+rm(flow_set)
+gc(reset = TRUE)
+
+# Applies the estimated transformation to the ncdfFlow set object
+ncdf_flowset_trans <- transform(ncdf_flowset, logicle_trans)
+
 # Create GatingSet from ncdfFlowSet
-gs_HVTN065 <- GatingSet(ncdf_flowset)
+gs_HVTN065 <- GatingSet(ncdf_flowset_trans)
 
 # Archives GatingSet
-# save_gs(gs_HVTN065, path = "/loc/no-backup/ramey/HVTN/065/gating-set")
-save_gs(gs_HVTN065, path = "/shared/silo_researcher/Gottardo_R/ramey_working/HVTN/065/gating_set")
+save_gs(gs_HVTN065, path = "/loc/no-backup/ramey/HVTN/065/gating-set")
+
