@@ -2,7 +2,7 @@ setwd("~/rglab/papers/paper-opencyto")
 library(ProjectTemplate)
 load.project()
 
-gs_HVTN065 <- load_gs("/shared/silo_researcher/Gottardo_R/ramey_working/HVTN/065/gating-results")
+gs_HVTN065 <- load_gs("/loc/no-backup/ramey/HVTN/065/gating-results")
 
 # Updates pData(...) to factors
 pData_HVTN065 <- pData(gs_HVTN065)
