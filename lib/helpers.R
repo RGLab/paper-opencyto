@@ -13,11 +13,63 @@
 #' population statistics data frame returned? Default: 1
 #' @return a data frame containing the population statistics but with prettified
 #' row names
-pretty_popstats <- function(population_stats, nodes = 1) {
-  node_names <- sapply(strsplit(rownames(population_stats), split = "/"), tail, n = nodes)
-  rownames(population_stats) <- sapply(node_names, paste, collapse = "/")
+pretty_popstats <- function(popstats) {
+  # Remove all population statistics for the following markers
+  markers_remove <- c("root", "cd8gate_pos", "cd4_neg", "cd8gate_neg", "cd4_pos")
+  popstats_remove <- sapply(strsplit(rownames(popstats), "/"), tail, n = 1)
+  popstats_remove <- popstats_remove %in% markers_remove
+  popstats <- popstats[!popstats_remove, ]
 
-  population_stats
+  rownames_popstats <- rownames(popstats)
+
+  # Updates any markers with a tolerance value to something easier to parse.
+  # Example: "cd4:TNFa_tol1&cd4:IFNg_tol1&cd4:IL2_tol1" => "cd4:TNFa&cd4:IFNg&cd4:IL2_tol_1e-1"
+  which_tol <- grep("tol", rownames_popstats)
+  tol_append <- sapply(strsplit(rownames_popstats[which_tol], "_tol"), tail, n = 1)
+  rownames_popstats[which_tol] <- gsub("_tol.", "", rownames_popstats[which_tol])
+  rownames_popstats[which_tol] <- paste(rownames_popstats[which_tol], tol_append, sep = "_1e-")
+
+  # Updates all cytokine combinations having the name of the form 'cd4/TNFa' to
+  # 'TNFa'
+  which_combo <- grep("[&|]", rownames_popstats)
+  rownames_combo <- rownames_popstats[which_combo]
+  rownames_combo <- gsub("cd[48]:TNFa", "TNFa", rownames_combo)
+  rownames_combo <- gsub("cd[48]:IFNg", "IFNg", rownames_combo)
+  rownames_combo <- gsub("cd[48]:IL2", "IL2", rownames_combo)
+  rownames_popstats[which_combo] <- rownames_combo
+
+  # Updates all cytokines gates to the form 'cd4:TNFa'
+  which_cytokines <- grep("TNFa|IFNg|IL2", rownames_popstats)
+  rownames_cytokines <- rownames_popstats[which_cytokines]
+  rownames_cytokines <- sapply(strsplit(rownames_cytokines, "cd3/"), tail, n = 1)
+  rownames_cytokines <- gsub("/", ":", rownames_cytokines)
+  rownames_popstats[which_cytokines] <- rownames_cytokines
+
+  # Retains the last marker name for all non-cytokine gates
+  rownames_noncytokines <- rownames_popstats[-which_cytokines]
+  rownames_noncytokines <- sapply(strsplit(rownames_noncytokines, "/"), tail, n = 1)
+  rownames_popstats[-which_cytokines] <- rownames_noncytokines
+
+  # Reformats cytokine-marker combinations: !TNFa&IFNg&IL2 => TNFa-IFNg+IL2+
+  rownames_popstats <- gsub("TNFa", "TNFa+", rownames_popstats)
+  rownames_popstats <- gsub("!TNFa\\+", "TNFa-", rownames_popstats)
+
+  rownames_popstats <- gsub("IFNg", "IFNg+", rownames_popstats)
+  rownames_popstats <- gsub("!IFNg\\+", "IFNg-", rownames_popstats)
+
+  rownames_popstats <- gsub("IL2", "IL2+", rownames_popstats)
+  rownames_popstats <- gsub("!IL2\\+", "IL2-", rownames_popstats)
+
+  rownames_popstats <- gsub("&", "", rownames_popstats)
+
+  # Updates popstats rownames
+  rownames(popstats) <- rownames_popstats
+
+  # Finally, we remove the marginal cytokines statistics.
+  # For example, we remove "cd4:TNFa+_1e-1"
+  popstats <- popstats[!grepl("cd[48]:(TNFa|IFNg|IL2)\\+_1e", rownames_popstats), ]
+
+  popstats
 }
 
 #' Removes commas from a numeric stored as a string.
@@ -91,7 +143,7 @@ polyfunction_nodes <- function(markers) {
 classification_summary <- function(popstats, treatment_info, pdata,
                                    stimulation = "GAG-1-PTEG", train_pct = 0.6,
                                    prob_threshold = 0, ...) {
-  m_popstats <- melt(popstats)
+  m_popstats <- reshape2:::melt(popstats)
   colnames(m_popstats) <- c("Marker", "Sample", "Proportion")
   m_popstats$Marker <- as.character(m_popstats$Marker)
 

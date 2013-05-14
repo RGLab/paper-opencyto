@@ -35,6 +35,7 @@ save_gs(gs_HVTN065, path = "/loc/no-backup/ramey/HVTN/065/gating-results")
 
 # Extracts the population statistics
 popstats_HVTN065 <- getPopStats(gs_HVTN065)
+counts_HVTN065 <- getPopStats(gs_HVTN065, statistic = "count")
 
-save(popstats_HVTN065, pData_HVTN065, file = "data/HVTN065-results.RData")
+save(counts_HVTN065, popstats_HVTN065, pData_HVTN065, file = "data/HVTN065-results.RData")
 
