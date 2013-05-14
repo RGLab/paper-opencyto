@@ -112,11 +112,13 @@ rownames(popstats_HVTN065) <- rownames_popstats
 
 # Computes the paired classification results.  The classification accuracies
 # computed use a probability threshold of 0 (i.e., d = 0).
+# The value of 'alpha = 0.5' is passed to 'glmnet' to indicate the usage of
+# elastic net.
 set.seed(42)
 GAG_results <- classification_summary(popstats_HVTN065, treatment_info, pData_HVTN065, 
-  stimulation = "GAG-1-PTEG")
+  stimulation = "GAG-1-PTEG", alpha = 0.5)
 ENV_results <- classification_summary(popstats_HVTN065, treatment_info, pData_HVTN065, 
-  stimulation = "ENV-1-PTEG")
+  stimulation = "ENV-1-PTEG", alpha = 0.5)
 
 # Constructs a ggplot2-friendly results data frame
 accuracy_results <- rbind.data.frame(unlist(GAG_results$accuracy), unlist(ENV_results$accuracy))

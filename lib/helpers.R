@@ -86,10 +86,11 @@ polyfunction_nodes <- function(markers) {
 #' classification probabilities for two samples from the same subject indicates
 #' that the first sample is classified as post-vaccine. Ignored if \code{paired}
 #' is \code{FALSE}. See details.
+#' @param ... Additional arguments passed to \code{\link{glmnet}}.
 #' @return list containing classification results
 classification_summary <- function(popstats, treatment_info, pdata,
                                    stimulation = "GAG-1-PTEG", train_pct = 0.6,
-                                   prob_threshold = 0) {
+                                   prob_threshold = 0, ...) {
   m_popstats <- melt(popstats)
   colnames(m_popstats) <- c("Marker", "Sample", "Proportion")
   m_popstats$Marker <- as.character(m_popstats$Marker)
@@ -147,7 +148,7 @@ classification_summary <- function(popstats, treatment_info, pdata,
   placebo_y <- placebo_data$VISITNO
   
   # Trains the 'glmnet' classifier using cross-validation.
-  glmnet_cv <- cv.glmnet(x = train_x, y = train_y, family = "binomial")
+  glmnet_cv <- cv.glmnet(x = train_x, y = train_y, family = "binomial", ...)
 
   # Computes classification accuracies in two different ways. If the visits are
   # paired by patient, then we compute the proportion of correctly classified
