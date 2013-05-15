@@ -207,64 +207,6 @@ z <- rnorm(5)
 
 
 
-
-
-
-
-#+ manual_gates, eval=FALSE
-HVTN065_manual_gates <- subset(HVTN065_manual_gates, ANTIGEN %in% c("ENV-1-PTEG", 
-  "GAG-1-PTEG", "negctrl"))
-HVTN065_manual_gates <- subset(HVTN065_manual_gates, PTID %in% levels(pData_HVTN065$PTID))
-HVTN065_manual_gates <- subset(HVTN065_manual_gates, VISITNO %in% c(2, 12))
-
-manual_counts <- ddply(HVTN065_manual_gates, .(PTID, VISITNO, ANTIGEN), function(x) {
-  counts <- data.frame(PTID = x$PTID[1], VISITNO = x$VISITNO[1], ANTIGEN = x$ANTIGEN[1], 
-    root = no_commas(x$COLLECTCT)[1], Singlet = no_commas(x$SUBSET1_NUM)[1], 
-    Live = no_commas(x$SUBSET2_NUM)[1], Lymphocytes = no_commas(x$SUBSET3_NUM)[1], 
-    CD3 = no_commas(x$SUBSET4_NUM)[1], stringsAsFactors = FALSE)
-  # To grab the appropriate counts from the CD4 and CD8 subtrees, we split the
-  # data.
-  x_CD4 <- subset(x, SUBSET5 == "CD4+")
-  x_CD8 <- subset(x, SUBSET5 == "CD8+")
-  
-  counts$CD4 <- no_commas(x_CD4$SUBSET5_NUM)[1]
-  counts$CD8 <- no_commas(x_CD8$SUBSET5_NUM)[1]
-  
-  # CD4 Cytokine Counts
-  for (i in seq_len(nrow(x_CD4))) {
-    cytokine_name <- paste0("CD4:", x_CD4$SUBSET6[i])
-    cytokine_count <- no_commas(x_CD4$SUBSET6_NUM[i])
-    counts[[cytokine_name]] <- cytokine_count
-  }
-  
-  # CD8 Cytokine Counts
-  for (i in seq_len(nrow(x_CD8))) {
-    cytokine_name <- paste0("CD8:", x_CD8$SUBSET6[i])
-    cytokine_count <- no_commas(x_CD8$SUBSET6_NUM[i])
-    counts[[cytokine_name]] <- cytokine_count
-  }
-  
-  counts
-})
-
-# Calculates the proportions for the manual gates
-manual_proportions <- ddply(manual_counts, .(PTID, VISITNO, ANTIGEN), function(x) {
-  proportions <- with(x, data.frame(PTID = PTID, VISITNO = VISITNO, ANTIGEN = ANTIGEN, 
-    Singlet = Singlet/root, Live = Live/Singlet, Lymphocytes = Lymphocytes/Live, 
-    CD3 = CD3/Lymphocytes, CD4 = CD4/CD3, CD8 = CD8/CD3))
-  
-  for (CD4_cytokine in colnames(x)[grep("CD4:", colnames(x))]) {
-    proportions[[CD4_cytokine]] <- x[[CD4_cytokine]]/x[["CD4"]]
-  }
-  
-  for (CD8_cytokine in colnames(x)[grep("CD8:", colnames(x))]) {
-    proportions[[CD8_cytokine]] <- x[[CD8_cytokine]]/x[["CD8"]]
-  }
-  
-  proportions
-})
-
-
 #' ## Classification with IFNg+ | IL2+
 
 #' Here, we compare the automated gates constructed using OpenCyto with the
