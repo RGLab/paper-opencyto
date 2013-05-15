@@ -102,29 +102,8 @@ polyfunction_nodes <- function(markers) {
 }
 
 
-#' Classification summary for population statistics
+#' Prepare population statistics data for classification study
 #'
-#' For a data.frame of population statistics, we conduct a classification summary
-#' of the the stimulation groups using the given treatment information.
-#'
-#' Per Greg, we apply the following classification study:
-#' 1. Remove placebos before subsetting treatment group train classifier.
-#' 2. Predict placebos (should expect poor classification accuracy because there
-#'    should be no separation in the placebos)
-#' 3. Predict test data set (should expect good results)
-#' 
-#' Per Greg:
-#' "We also want to do this paired, using the difference in classification
-#' probabilities for two samples from the same subject. i.e.
-#' d = Pr(sample 1 from subject 1 = post-vaccine) -
-#' Pr(sample 2 from subject 1 = post-vaccine).
-#' If d > threshold, then classify sample 1 as post-vaccine and sample 2 as
-#' pre-vaccine, otherwise if d < threshold classify sample 1 as pre-vaccine and
-#' sample 2 as post-vaccine, otherwise mark them as unclassifiable."
-#'
-#' Hence, we compute classification accuracies by pairing the visits by patient
-#' and then computing the proportion of correctly classified patients. Otherwise,
-#' we calculate the proportion of visits that are correctly classified.
 #'
 #' @param popstats a data.frame containing population statistics from
 #' \code{getPopStats}
@@ -134,15 +113,9 @@ polyfunction_nodes <- function(markers) {
 #' @param stimulation the stimulation group
 #' @param train_pct a numeric value determining the percentage of treated
 #' patients used as training data and the remaining patients as test data
-#' @param prob_threshold a numeric value above which the difference in
-#' classification probabilities for two samples from the same subject indicates
-#' that the first sample is classified as post-vaccine. Ignored if \code{paired}
-#' is \code{FALSE}. See details.
-#' @param ... Additional arguments passed to \code{\link{glmnet}}.
-#' @return list containing classification results
-classification_summary <- function(popstats, treatment_info, pdata,
-                                   stimulation = "GAG-1-PTEG", train_pct = 0.6,
-                                   prob_threshold = 0, ...) {
+#' @return list containing the various data to use in a classification study
+prepare_classification <- function(popstats, treatment_info, pdata,
+                                   stimulation = "GAG-1-PTEG", train_pct = 0.6) {
   m_popstats <- reshape2:::melt(popstats)
   colnames(m_popstats) <- c("Marker", "Sample", "Proportion")
   m_popstats$Marker <- as.character(m_popstats$Marker)
@@ -190,6 +163,60 @@ classification_summary <- function(popstats, treatment_info, pdata,
   train_data <- subset(treatment_data, PTID %in% treated_patients[patients_train])
   test_data <- subset(treatment_data, PTID %in% treated_patients[-patients_train])
   
+  list(train_data = train_data, test_data = test_data, placebo_data = placebo_data)
+}
+
+
+#' Classification summary for population statistics
+#'
+#' For a data.frame of population statistics, we conduct a classification summary
+#' of the the stimulation groups using the given treatment information.
+#'
+#' Per Greg, we apply the following classification study:
+#' 1. Remove placebos before subsetting treatment group train classifier.
+#' 2. Predict placebos (should expect poor classification accuracy because there
+#'    should be no separation in the placebos)
+#' 3. Predict test data set (should expect good results)
+#' 
+#' Per Greg:
+#' "We also want to do this paired, using the difference in classification
+#' probabilities for two samples from the same subject. i.e.
+#' d = Pr(sample 1 from subject 1 = post-vaccine) -
+#' Pr(sample 2 from subject 1 = post-vaccine).
+#' If d > threshold, then classify sample 1 as post-vaccine and sample 2 as
+#' pre-vaccine, otherwise if d < threshold classify sample 1 as pre-vaccine and
+#' sample 2 as post-vaccine, otherwise mark them as unclassifiable."
+#'
+#' Hence, we compute classification accuracies by pairing the visits by patient
+#' and then computing the proportion of correctly classified patients. Otherwise,
+#' we calculate the proportion of visits that are correctly classified.
+#'
+#' @param popstats a data.frame containing population statistics from
+#' \code{getPopStats}
+#' @param treatment_info a data.frame containing a lookup of \code{PTID} and
+#' placebo/treatment information
+#' @param pdata an object returned from \code{pData} from the \code{GatingSet}
+#' @param stimulation the stimulation group
+#' @param train_pct a numeric value determining the percentage of treated
+#' patients used as training data and the remaining patients as test data
+#' @param prob_threshold a numeric value above which the difference in
+#' classification probabilities for two samples from the same subject indicates
+#' that the first sample is classified as post-vaccine. Ignored if \code{paired}
+#' is \code{FALSE}. See details.
+#' @param ... Additional arguments passed to \code{\link{glmnet}}.
+#' @return list containing classification results
+classification_summary <- function(popstats, treatment_info, pdata,
+                                   stimulation = "GAG-1-PTEG", train_pct = 0.6,
+                                   prob_threshold = 0, ...) {
+  
+  classif_data <- prepare_classification(popstats = popstats,
+                                         treatment_info = treatment_info, pdata = pdata,
+                                         stimulation = stimulation, train_pct = train_pct)
+
+  train_data <- classif_data$train_data
+  test_data <- classif_data$test_data
+  placebo_data <- classif_data$placebo_data
+
   train_x <- as.matrix(subset(train_data, select = -c(PTID, VISITNO)))
   train_y <- train_data$VISITNO
   
@@ -198,7 +225,7 @@ classification_summary <- function(popstats, treatment_info, pdata,
   
   placebo_x <- as.matrix(subset(placebo_data, select = -c(PTID, VISITNO)))
   placebo_y <- placebo_data$VISITNO
-  
+
   # Trains the 'glmnet' classifier using cross-validation.
   glmnet_cv <- cv.glmnet(x = train_x, y = train_y, family = "binomial", ...)
 
@@ -251,9 +278,122 @@ classification_summary <- function(popstats, treatment_info, pdata,
   list(accuracy = list(treatment = accuracy_treated, placebo = accuracy_placebo),
        classification_probs = list(treated = predictions_treated,
          placebo = predictions_placebo),
-       markers = markers_kept,
+       markers = markers_kept, coef_glmnet = coef_glmnet,
        test_data = list(treated = test_data, placebo = placebo_data))
 }
+
+
+#' Classification summary for population statistics using logistic regression
+#'
+#' For a data.frame of population statistics, we conduct a classification summary
+#' of the the stimulation groups using the given treatment information.
+#'
+#' Per Greg, we apply the following classification study:
+#' 1. Remove placebos before subsetting treatment group train classifier.
+#' 2. Predict placebos (should expect poor classification accuracy because there
+#'    should be no separation in the placebos)
+#' 3. Predict test data set (should expect good results)
+#' 
+#' Per Greg:
+#' "We also want to do this paired, using the difference in classification
+#' probabilities for two samples from the same subject. i.e.
+#' d = Pr(sample 1 from subject 1 = post-vaccine) -
+#' Pr(sample 2 from subject 1 = post-vaccine).
+#' If d > threshold, then classify sample 1 as post-vaccine and sample 2 as
+#' pre-vaccine, otherwise if d < threshold classify sample 1 as pre-vaccine and
+#' sample 2 as post-vaccine, otherwise mark them as unclassifiable."
+#'
+#' Hence, we compute classification accuracies by pairing the visits by patient
+#' and then computing the proportion of correctly classified patients. Otherwise,
+#' we calculate the proportion of visits that are correctly classified.
+#'
+#' @param popstats a data.frame containing population statistics from
+#' \code{getPopStats}
+#' @param treatment_info a data.frame containing a lookup of \code{PTID} and
+#' placebo/treatment information
+#' @param pdata an object returned from \code{pData} from the \code{GatingSet}
+#' @param stimulation the stimulation group
+#' @param train_pct a numeric value determining the percentage of treated
+#' patients used as training data and the remaining patients as test data
+#' @param prob_threshold a numeric value above which the difference in
+#' classification probabilities for two samples from the same subject indicates
+#' that the first sample is classified as post-vaccine. Ignored if \code{paired}
+#' is \code{FALSE}. See details.
+#' @param ... Additional arguments passed to \code{\link{glm}}.
+#' @return list containing classification results
+classification_summary_logistic <- function(popstats, treatment_info, pdata,
+                                            stimulation = "GAG-1-PTEG", train_pct = 0.6,
+                                            prob_threshold = 0, ...) {
+  
+  classif_data <- prepare_classification(popstats = popstats,
+                                         treatment_info = treatment_info, pdata = pdata,
+                                         stimulation = stimulation, train_pct = train_pct)
+
+  train_data <- classif_data$train_data
+  test_data <- classif_data$test_data
+  placebo_data <- classif_data$placebo_data
+
+  train_x <- as.matrix(subset(train_data, select = -c(PTID, VISITNO)))
+  train_y <- train_data$VISITNO
+  
+  test_x <- as.matrix(subset(test_data, select = -c(PTID, VISITNO)))
+  test_y <- test_data$VISITNO
+  
+  placebo_x <- as.matrix(subset(placebo_data, select = -c(PTID, VISITNO)))
+  placebo_y <- placebo_data$VISITNO
+
+  # It is much easier to use 'glm' with data.frames. We oblige here.
+  # The Dude does oblige.
+  train_df <- data.frame(VISITNO = train_y, train_x, check.names = FALSE)
+  test_df <- data.frame(VISITNO = test_y, test_x, check.names = FALSE)
+  placebo_df <- data.frame(VISITNO = placebo_y, placebo_x, check.names = FALSE)  
+
+  # Trains the 'glmnet' classifier using cross-validation.
+  glm_out <- glm(VISITNO ~ ., data = train_df, family = binomial(logit), ...)
+
+  # Computes classification accuracies in two different ways. If the visits are
+  # paired by patient, then we compute the proportion of correctly classified
+  # patients. Otherwise, we calculate the proportion of visits that are correctly
+  # classified.
+  predictions_treated <- as.vector(predict(glm_out, test_df, type = "response"))
+  predictions_placebo <- as.vector(predict(glm_out, placebo_df, type = "response"))
+   
+  # If the difference in classification probabilities exceeds the probability
+  # threshold, we assign the first sample as visit 2 and the second as visit 12.
+  # Otherwise, we assign the first sample as visit 12 and the second as visit 2.
+  correct_patients <- tapply(seq_along(test_data$PTID), test_data$PTID, function(i) {
+    if (diff(predictions_treated[i]) > prob_threshold) {
+      classification <- c("2", "12")
+    } else {
+      classification <- c("12", "2")
+    }
+    all(classification == test_y[i])
+  })
+  correct_placebo <- tapply(seq_along(placebo_data$PTID), placebo_data$PTID, function(i) {
+   if (diff(predictions_placebo[i]) > prob_threshold) {
+      classification <- c("2", "12")
+    } else {
+      classification <- c("12", "2")
+    }
+    all(classification == placebo_y[i])
+  })
+
+  accuracy_treated <- mean(correct_patients)
+  accuracy_placebo <- mean(correct_placebo)
+  
+  # Extracts the fitted coefficients for each feature
+  coef_glm <- coef(glm_out)
+
+  # We return the classification accuracies, the classification probabilities and
+  # markers kept using 'glmnet', the corresponding test data sets for further
+  # analysis (e.g., ROC curves), and the markers kept by 'glmnet'.
+  list(accuracy = list(treatment = accuracy_treated, placebo = accuracy_placebo),
+       classification_probs = list(treated = predictions_treated,
+         placebo = predictions_placebo),
+       coef_glm = coef_glm,
+       test_data = list(treated = test_data, placebo = placebo_data))
+}
+
 
 #' Scales a vector of data using the Huber robust estimator for mean and
 #' standard deviation
@@ -441,4 +581,66 @@ cytokine_cutpoint <- function(x, tol = 0.001, ...) {
   lowest_valley <- x[which.min(y)]
   cutpoint <- x[which(x > lowest_valley & abs(y) < tol)[1]]
   cutpoint
+}
+
+#' Partitions the population statistics by tolerance values
+#'
+#' Partitions the population statistics into upstream and cytokines for each
+#' processing below. The cytokine population statistics are stored in a named
+#' list, where each element corresponds to a cytokine tolerance value.
+#' The tolerance value is then stripped from the marker names.
+#'
+#' @param data.frame containing population statistics
+#' @param tolerances a vector of the tolerance values
+#' @return a list of data.frames, each of which is the data.frame of population
+#' statistics for the current tolerance value.
+partition_popstats <- function(popstats, tolerances) {
+  popstats <- lapply(tolerances, function(tol) {
+    popstats_tol <- popstats[grep(tol, rownames(popstats)), ]
+    rownames(popstats_tol) <- sapply(strsplit(rownames(popstats_tol), "_"), head, n = 1)
+    popstats_tol
+  })
+  names(popstats) <- tolerances
+  popstats
+}
+
+
+#' Summarizes paired classification study and generates ROC results
+#'
+#' @param results named list containing the results for each cytokine tolerance value
+#' @param tolerances a vector of the tolerance values
+#' @return data.frame with ROC results
+ROC_summary <- function(results, tolerances) {
+  treated <- lapply(results, function(x) {
+    cbind(subset(x$test_data$treated, select = c(PTID, VISITNO)),
+          Truth = "Treatment",
+          Probability = x$classification_probs$treated)
+  })
+  placebo <- lapply(results, function(x) {
+    cbind(subset(x$test_data$placebo, select = c(PTID, VISITNO)),
+          Truth = "Placebo",
+          Probability = x$classification_probs$placebo)
+  })
+  probs <- lapply(tolerances, function(tol) {
+    cbind(Tolerance = tol, rbind(treated[[tol]], placebo[[tol]]))
+  })
+  probs <- do.call(rbind, probs)
+
+  # For each PTID, we compute the absolute value of the difference in
+  # classification probabilties for visits 2 and 12 and then order by the
+  # differences.
+  summary <- ddply(probs, .(Tolerance, PTID), summarize,
+                       delta = 1 - abs(diff(Probability[VISITNO %in% c("2", "12")])),
+                       Truth = unique(Truth))
+  summary <- summary[with(summary, order(Tolerance, delta, Truth, decreasing = FALSE)), ]
+
+  # Calculates true and false positive rates based on Treatment and Placebo
+  # samples, respectively. Because we are using Treatments and Placebos, we
+  # calculate TPRs and FPRs differently than usual. The basic idea is that when we
+  # add to the TPR each time we classify a patient as Treatment and to the FPR
+  # each time we classify a patient as Placebo. The ordering here is determined by
+  # the rank of the differences in classification probabilities.
+  ddply(summary, .(Tolerance), summarize,
+        FPR = cumsum(Truth == "Placebo") / sum(Truth == "Placebo"),
+        TPR = cumsum(Truth == "Treatment") / sum(Truth == "Treatment"))
 }

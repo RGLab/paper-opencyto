@@ -5,22 +5,27 @@
 #' We have constructed the cytokine gates using the smoothed first derivative
 #' gating scheme with several candidate values of the cutoff tolerance.
 #'
-#' For each T-cell subset CD4 and CD8, we construct as features the following $9 = 2^3 + 1$
+#' For each T-cell subset CD4 and CD8, we construct as features the following 7
 #' gates:
 #'
 #' 1. TNFa+IFNg+IL2+
 #' 2. TNFa+IFNg+IL2-
-#' 3. ...
-#' 8. TNFa-IFNg-IL2-
-#' 9. IFNg+ | IL2+
+#' 3. TNFa+IFNg-IL2+
+#' 4. TNFa+IFNg-IL2-
+#' 5. TNFa-IFNg+IL2+
+#' 6. TNFa-IFNg+IL2-
+#' 7. TNFa-IFNg-IL2+
 #'
+#' We explicity ignore TNFa-IFNg-IL2- because it is redundant given the other seven
+#' features.
+#' 
 #' Our goal is to examine the classification accuracy of patients' visits (i.e.,
 #' pre- and post-vaccine).
 
 #+ setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE
 opts_chunk$set(fig.align = "default", dev = "png", message = FALSE, warning = FALSE, 
-  cache = TRUE, echo = FALSE, fig.path = "figure/HVTN065-", cache.path = "cache/HVTN065-", 
-  fig.width = 12, fig.height = 12, autodep = TRUE)
+  cache = FALSE, echo = FALSE, fig.path = "figure/HVTN065-", cache.path = "cache/HVTN065-", 
+  fig.width = 12, fig.height = 12)
 options(stringsAsFactors = FALSE)
 
 #+ load_data
@@ -38,9 +43,9 @@ treatment_info$Treatment <- replace(treatment_info$Treatment, grep("^Placebo", t
   "Placebo")
 
 # Prettifies popstats rownames
-popstats_HVTN065 <- pretty_popstats(popstats_HVTN065)
-counts_HVTN065 <- pretty_popstats(counts_HVTN065)
-rownames_popstats <- rownames(popstats_HVTN065)
+popstats_cleaned <- pretty_popstats(popstats_HVTN065)
+counts_cleaned <- pretty_popstats(counts_HVTN065)
+rownames_popstats <- rownames(popstats_cleaned)
 which_cytokines <- grep("TNFa|IFNg|IL2", rownames_popstats)
 
 # Determines which cytokine tolerances were used.
@@ -51,14 +56,22 @@ cytokine_tolerances <- sort(unique(cytokine_tolerances))
 # processing below. The cytokine population statistics are stored in a named
 # list, where each element corresponds to a cytokine tolerance value.
 # The tolerance value is then stripped from the marker names.
-popstats_upstream <- popstats_HVTN065[-which_cytokines, ]
-popstats_cytokines <- popstats_HVTN065[which_cytokines, ]
-popstats_cytokines <- lapply(cytokine_tolerances, function(tol) {
-  popstats_tol <- popstats_cytokines[grep(tol, rownames(popstats_cytokines)), ]
-  rownames(popstats_tol) <- sapply(strsplit(rownames(popstats_tol), "_"), head, n = 1)
-  popstats_tol
-})
-names(popstats_cytokines) <- cytokine_tolerances
+#
+# We also remove TNFa-IFNg-IL2- and IL2+ | IFNg+
+popstats_upstream <- popstats_cleaned[-which_cytokines, ]
+popstats_cytokines <- popstats_cleaned[which_cytokines, ]
+popstats_cytokines <- popstats_cytokines[!grepl("TNFa-IFNg-IL2-", rownames(popstats_cytokines)), ]
+popstats_cytokines <- popstats_cytokines[!grepl("IL2\\+\\|IFNg\\+", rownames(popstats_cytokines)), ]
+popstats_cytokines <- partition_popstats(popstats_cytokines,
+                                         tolerances = cytokine_tolerances)
+
+# Repeats the previous step but with the counts.
+counts_upstream <- counts_cleaned[-which_cytokines, ]
+counts_cytokines <- counts_cleaned[which_cytokines, ]
+counts_cytokines <- partition_popstats(counts_cytokines,
+                                       tolerances = cytokine_tolerances)
+
+
 
 #' ## Classification Accuracies of Visit Times Paired by Patients
 #'
@@ -132,65 +145,12 @@ p + theme(axis.title = element_text(size = 16))
 
 #+ ROC
 # Summarizes the classification probabilties for GAG and ENV.
-GAG_treated <- lapply(GAG_results, function(x) {
-  cbind(subset(x$test_data$treated, select = c(PTID, VISITNO)),
-        Truth = "Treatment",
-        Probability = x$classification_probs$treated)
-})
-GAG_placebo <- lapply(GAG_results, function(x) {
-  cbind(subset(x$test_data$placebo, select = c(PTID, VISITNO)),
-        Truth = "Placebo",
-        Probability = x$classification_probs$placebo)
-})
-GAG_probs <- lapply(cytokine_tolerances, function(tol) {
-  cbind(Tolerance = tol, rbind(GAG_treated[[tol]], GAG_placebo[[tol]]))
-})
-GAG_probs <- do.call(rbind, GAG_probs)
-
-ENV_treated <- lapply(ENV_results, function(x) {
-  cbind(subset(x$test_data$treated, select = c(PTID, VISITNO)),
-        Truth = "Treatment",
-        Probability = x$classification_probs$treated)
-})
-ENV_placebo <- lapply(ENV_results, function(x) {
-  cbind(subset(x$test_data$placebo, select = c(PTID, VISITNO)),
-        Truth = "Placebo",
-        Probability = x$classification_probs$placebo)
-})
-ENV_probs <- lapply(cytokine_tolerances, function(tol) {
-  cbind(Tolerance = tol, rbind(ENV_treated[[tol]], ENV_placebo[[tol]]))
-})
-ENV_probs <- do.call(rbind, ENV_probs)
-
-# For each PTID, we compute the absolute value of the difference in
-# classification probabilties for visits 2 and 12 and then order by the
-# differences.
-GAG_summary <- ddply(GAG_probs, .(Tolerance, PTID), summarize,
-                     delta = 1 - abs(diff(Probability[VISITNO %in% c("2", "12")])),
-                     Truth = unique(Truth))
-GAG_summary <- GAG_summary[with(GAG_summary, order(Tolerance, delta, Truth, decreasing = FALSE)), ]
-
-ENV_summary <- ddply(ENV_probs, .(Tolerance, PTID), summarize,
-                     delta = 1 - abs(diff(Probability[VISITNO %in% c("2", "12")])),
-                     Truth = unique(Truth))
-ENV_summary <- ENV_summary[with(ENV_summary, order(Tolerance, delta, Truth, decreasing = FALSE)), ]
-
-# Calculates true and false positive rates based on Treatment and Placebo
-# samples, respectively. Because we are using Treatments and Placebos, we
-# calculate TPRs and FPRs differently than usual. The basic idea is that when we
-# add to the TPR each time we classify a patient as Treatment and to the FPR
-# each time we classify a patient as Placebo. The ordering here is determined by
-# the rank of the differences in classification probabilities.
-GAG_summary <- ddply(GAG_summary, .(Tolerance), summarize,
-                     FPR = cumsum(Truth == "Placebo") / sum(Truth == "Placebo"),
-                     TPR = cumsum(Truth == "Treatment") / sum(Truth == "Treatment"))
-ENV_summary <- ddply(ENV_summary, .(Tolerance), summarize,
-                     FPR = cumsum(Truth == "Placebo") / sum(Truth == "Placebo"),
-                     TPR = cumsum(Truth == "Treatment") / sum(Truth == "Treatment"))
+GAG_ROC <- ROC_summary(GAG_results, cytokine_tolerances)
+ENV_ROC <- ROC_summary(ENV_results, cytokine_tolerances)
 
 # Estimates ROC curves for GAG and ENV
-ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_summary),
-                    cbind(Stimulation = "ENV-1-PTEG", ENV_summary))
+ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC),
+                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC))
 
 #+ ROC_figure, results='asis'
 
@@ -305,11 +265,78 @@ manual_proportions <- ddply(manual_counts, .(PTID, VISITNO, ANTIGEN), function(x
 })
 
 
-# TODO: Wait for full cytokine-gate information On 11 March 2013, Greg said he
-# would look into it.  After we have the full information, build a classifier
-# for the manual proportions.
- 
-# TODO: (Follow-up) On 14 May 2013, RG and Greg said that we should use logistic
-# regression to compare the classification performance using IL2+ | IFNg+ for
-# both manual and automated gates. Then, we will compare using the multivariate
-# subsets (i.e., polyfunctional gates).
+#' ## Classification with IFNg+ | IL2+
+
+#' Here, we compare the automated gates constructed using OpenCyto with the
+#' manually constructed gates. For both cases, we apply logistic regression to
+#' classify patient visits utilizing a single feature, namely IFNg+ | IL2+.
+
+#' ### Automated Gates using OpenCyto
+
+#+ classification_positivity_opencyto
+popstats_positivity <- popstats_cleaned[grepl("IL2\\+\\|IFNg\\+", rownames(popstats_cleaned)), ]
+popstats_positivity <- partition_popstats(popstats_positivity,
+                                         tolerances = cytokine_tolerances)
+set.seed(42)
+GAG_results <- lapply(popstats_positivity, classification_summary_logistic,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "GAG-1-PTEG")
+ENV_results <- lapply(popstats_positivity, classification_summary_logistic,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "ENV-1-PTEG")
+
+# Constructs a ggplot2-friendly results data frame
+GAG_accuracy <- melt(lapply(GAG_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+ENV_accuracy <- melt(lapply(ENV_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+accuracy_results <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_accuracy),
+                          cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy))
+colnames(accuracy_results) <- c("Stimulation", "Treatment", "Accuracy", "Tolerance")
+
+# + classification_positivity_figure, results='asis'
+p <- ggplot(accuracy_results, aes(x = Stimulation, fill = Treatment))
+p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + ylim(0, 1) + xlab("Stimulation Group") + ylab("Classification Accuracy")
+p <- p + ggtitle("Classification Accuracy of Visit Numbers Paired by Patient")
+p <- p + theme_bw() + theme(plot.title = element_text(size = 18))
+p <- p + theme(strip.text.y = element_text(size = 14))
+p <- p + theme(axis.text = element_text(size = 12))
+p + theme(axis.title = element_text(size = 16))
+
+#' Next, we calculate ROC curves assuming all vaccinees are true positive and
+#' the placebos are false positive.
+#' For each PTID, we compute the absolute value of the difference in
+#' classification probabilties for visits 2 and 12 and then order by the
+#' differences.
+
+#+ ROC_positivity
+# Summarizes the classification probabilties for GAG and ENV.
+GAG_ROC <- ROC_summary(GAG_results, cytokine_tolerances)
+ENV_ROC <- ROC_summary(ENV_results, cytokine_tolerances)
+
+# Estimates ROC curves for GAG and ENV
+ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC),
+                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC))
+
+#+ ROC_positivity_figure, results='asis'
+
+# The 'pracma:::trapz' function numerically integrates via the trapezoid method
+AUC_df <- ddply(ROC_curves, .(Stimulation, Tolerance), summarize,
+                AUC = trapz(FPR, TPR))
+AUC_df$AUC <- paste("AUC:", round(AUC_df$AUC, 3))
+AUC_df$x <- 0.5
+AUC_df$y <- replace(rep(0.5, nrow(AUC_df)), AUC_df$Stimulation == "GAG-1-PTEG", 0.55)
+
+# Creates a single plot containing ROC curves for both stimulation groups.
+# Also, displays AUC's as text on plot.
+p <- ggplot(ROC_curves, aes(x = FPR, y = TPR))
+p <- p + geom_line(aes(color = Stimulation))
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + geom_text(data = AUC_df, aes(label = AUC, x = x, y = y, color = Stimulation))
+p <- p + theme_bw() + ggtitle("ROC Curves for ENV and GAG Stimulated Samples")
+p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)")
+
+
+#' ### Manual Gates
+
+#+ classification_positivity_manual, eval=FALSE
