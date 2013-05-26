@@ -45,6 +45,11 @@ fcs_headers <- fcs_headers[!sapply(fcs_headers, is.null)]
 # NA values is stored. In this case, we remove them.
 fcs_headers <- do.call(rbind, lapply(fcs_headers, na.omit))
 
+# Before we map FCS files to PTIDS, we remove the samples that have comments.
+# In particular, we want to remove the samples that have the following comment:
+# (File:)Unreliable staining, omit from analysis
+analysis.plan <- subset(analysis.plan, Comments == "")
+
 # Filter out columns of analysis.plan that we don't need
 # We are only interested in mapping fcs files to PTIDs.
 analysis_plan <- analysis.plan[, c("ASSAYID", "PTID", "SAMP_ORD", "ANTIGEN", "VISITNO")]
