@@ -65,10 +65,6 @@ pretty_popstats <- function(popstats) {
   # Updates popstats rownames
   rownames(popstats) <- rownames_popstats
 
-  # Finally, we remove the marginal cytokines statistics.
-  # For example, we remove "cd4:TNFa+_1e-1"
-  popstats <- popstats[!grepl("cd[48]:(TNFa|IFNg|IL2)\\+_1e", rownames_popstats), ]
-
   popstats
 }
 
@@ -102,6 +98,65 @@ polyfunction_nodes <- function(markers) {
 }
 
 
+#' Prepare manual gates population statistics data for classification study
+#'
+#'
+#' @param popstats a data.frame containing population statistics derived from
+#' manual gates
+#' @param treatment_info a data.frame containing a lookup of \code{PTID} and
+#' placebo/treatment information
+#' @param pdata an object returned from \code{pData} from the \code{GatingSet}
+#' @param stimulation the stimulation group
+#' @param train_pct a numeric value determining the percentage of treated
+#' patients used as training data and the remaining patients as test data
+#' @return list containing the various data to use in a classification study
+prepare_manual <- function(popstats, treatment_info, pdata,
+                           stimulation = "GAG-1-PTEG", train_pct = 0.6) {
+  
+  # Next, we include only the negative controls and the specified stimulation group.
+  popstats <- subset(popstats, Stimulation %in% c("negctrl", stimulation))
+  
+  popstats$Stimulation <- factor(as.character(popstats$Stimulation), labels = c(stimulation, "negctrl"))
+  popstats$PTID <- factor(popstats$PTID)
+  popstats$VISITNO <- factor(popstats$VISITNO)
+
+  m_popstats <- reshape2:::melt.data.frame(popstats, variable.name = "Marker",
+                                           value.name = "Proportion")
+
+  # Here, we summarize the population statistics within Stimulation group.
+  # Effectively, this averages the two negative-control proportions for each
+  # marker.
+  m_popstats <- ddply(m_popstats, .(PTID, VISITNO, Stimulation, Marker),
+                      summarize, Proportion = mean(Proportion))
+
+  # Next, we normalize the population proportions for the stimulated samples to
+  # adjust for the background (negative controls) by calculating the difference of
+  # the proportions for the stimulated samples and the negative controls.
+  m_popstats <- ddply(m_popstats, .(PTID, VISITNO, Marker), summarize,
+                    diff_Proportion = diff(Proportion))
+
+  # Converts the melted data.frame to a wider format to continue the classification study.
+  m_popstats <- dcast(m_popstats, PTID + VISITNO ~ Marker, value.var = "diff_Proportion")
+  m_popstats <- plyr:::join(m_popstats, treatment_info)
+
+  m_popstats$VISITNO <- factor(m_popstats$VISITNO, labels = c("2", "12"))
+  placebo_data <- subset(m_popstats, Treatment == "Placebo", select = -Treatment)
+  treatment_data <- subset(m_popstats, Treatment == "Treatment", select = -Treatment)
+
+  # Partitions GAG data for classification study
+  treated_patients <- unique(treatment_data$PTID)
+  num_treated_patients <- length(treated_patients)
+  patients_train <- sample.int(num_treated_patients, train_pct * num_treated_patients)
+  
+  train_data <- subset(treatment_data, PTID %in% treated_patients[patients_train])
+  test_data <- subset(treatment_data, PTID %in% treated_patients[-patients_train])
+  
+  list(train_data = train_data, test_data = test_data, placebo_data = placebo_data)
+}
+
+
+
+
 #' Prepare population statistics data for classification study
 #'
 #'
@@ -133,7 +188,7 @@ prepare_classification <- function(popstats, treatment_info, pdata,
 
   # Next, we include only the negative controls and the specified stimulation groups.
   m_popstats <- subset(m_popstats, Stimulation %in% c("negctrl", stimulation))
-  m_popstats$Stimulation <- factor(m_popstats$Stimulation)
+  m_popstats$Stimulation <- factor(m_popstats$Stimulation, labels = c(stimulation, "negctrl"))
 
   # Here, we summarize the population statistics within Stimulation group.
   # Effectively, this averages the two negative-control proportions for each
@@ -323,15 +378,24 @@ classification_summary <- function(popstats, treatment_info, pdata,
 #' @return list containing classification results
 classification_summary_logistic <- function(popstats, treatment_info, pdata,
                                             stimulation = "GAG-1-PTEG", train_pct = 0.6,
-                                            prob_threshold = 0, ...) {
+                                            prob_threshold = 0, manual_gates = FALSE, ...) {
   
-  classif_data <- prepare_classification(popstats = popstats,
-                                         treatment_info = treatment_info, pdata = pdata,
-                                         stimulation = stimulation, train_pct = train_pct)
+  if (manual_gates) {
+    classif_data <- prepare_manual(popstats = popstats, treatment_info = treatment_info,
+                                   pdata = pdata, stimulation = stimulation, train_pct = train_pct)
+  } else {
+    classif_data <- prepare_classification(popstats = popstats,
+                                           treatment_info = treatment_info, pdata = pdata,
+                                           stimulation = stimulation, train_pct = train_pct)
+  }
 
   train_data <- classif_data$train_data
   test_data <- classif_data$test_data
   placebo_data <- classif_data$placebo_data
+
+  train_data$PTID <- as.character(train_data$PTID)
+  test_data$PTID <- as.character(test_data$PTID)
+  placebo_data$PTID <- as.character(placebo_data$PTID)
 
   train_x <- as.matrix(subset(train_data, select = -c(PTID, VISITNO)))
   train_y <- train_data$VISITNO
@@ -643,4 +707,37 @@ ROC_summary <- function(results, tolerances) {
   ddply(summary, .(Tolerance), summarize,
         FPR = cumsum(Truth == "Placebo") / sum(Truth == "Placebo"),
         TPR = cumsum(Truth == "Treatment") / sum(Truth == "Treatment"))
+}
+
+#' Summarizes classification study and generates ROC results for manual gates
+#'
+#' @param results named list containing the results for each cytokine tolerance value
+#' @return data.frame with ROC results
+ROC_summary_manual <- function(results) {
+  treated <- cbind(subset(results$test_data$treated, select = c(PTID, VISITNO)),
+          Truth = "Treatment",
+          Probability = results$classification_probs$treated)
+
+  placebo <- cbind(subset(results$test_data$placebo, select = c(PTID, VISITNO)),
+          Truth = "Placebo",
+          Probability = results$classification_probs$placebo)
+
+  probs <- rbind(treated, placebo)
+
+  # For each PTID, we compute the absolute value of the difference in
+  # classification probabilties for visits 2 and 12 and then order by the
+  # differences.
+  summary <- ddply(probs, .(PTID), summarize,
+                       delta = 1 - abs(diff(Probability[VISITNO %in% c("2", "12")])),
+                       Truth = unique(Truth))
+  summary <- summary[with(summary, order(delta, Truth, decreasing = FALSE)), ]
+
+  # Calculates true and false positive rates based on Treatment and Placebo
+  # samples, respectively. Because we are using Treatments and Placebos, we
+  # calculate TPRs and FPRs differently than usual. The basic idea is that when we
+  # add to the TPR each time we classify a patient as Treatment and to the FPR
+  # each time we classify a patient as Placebo. The ordering here is determined by
+  # the rank of the differences in classification probabilities.
+  summarize(summary, FPR = cumsum(Truth == "Placebo") / sum(Truth == "Placebo"),
+            TPR = cumsum(Truth == "Treatment") / sum(Truth == "Treatment"))
 }
