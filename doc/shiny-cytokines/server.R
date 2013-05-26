@@ -1,4 +1,18 @@
 shinyServer(function(input, output) {
+  subset_PTIDs <- reactive({
+    if (is.null(input$filter_PTIDs)) {
+      return(levels(pData_HVTN065$PTID))
+    }
+    switch(input$filter_PTIDs,
+           Treatment = unique(subset(pData_HVTN065, Treatment == "Treatment")$PTID),
+           Placebo = unique(subset(pData_HVTN065, Treatment == "Placebo")$PTID),
+           Both = levels(pData_HVTN065$PTID))
+  })
+
+  output$PTID <- renderUI({
+    selectInput("PTID", "PTID", subset_PTIDs())
+  })
+           
   PTID_fcs <- reactive({
     subset(pData_HVTN065, PTID == input$PTID)$name
   })
@@ -40,6 +54,10 @@ shinyServer(function(input, output) {
 
   # Plot of cytokine densities for each stimulation group
   output$densitiesPlot <- renderPlot({
+    # If no PTID has been selected, do not attempt to show plot.
+    if (is.null(input$PTID)) {
+      return(NULL)
+    }
     p1 <- ggplot(cytokine_summary(), aes(x = x, y = y, color = Stim, group = Stim))
     p1 <- p1 + geom_path() + theme_bw()
     p1 <- p1 + facet_grid(VISITNO ~ Cytokine)
@@ -119,4 +137,55 @@ shinyServer(function(input, output) {
     }
   })
 
+  output$singletGatesPlot <- renderPlot({
+    if (input$singlet_gates) {
+      fcs_files <- PTID_fcs()
+      print(plotGate(gs_HVTN065[fcs_files], "singlet",
+                     lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
+    } else {
+      return(NULL)
+    }
+  })
+
+  output$viableGatesPlot <- renderPlot({
+    if (input$viable_gates) {
+      fcs_files <- PTID_fcs()
+      print(plotGate(gs_HVTN065[fcs_files], "viable",
+                     lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
+    } else {
+      return(NULL)
+    }
+  })
+
+  output$lymphGatesPlot <- renderPlot({
+    if (input$lymph_gates) {
+      fcs_files <- PTID_fcs()
+      print(plotGate(gs_HVTN065[fcs_files], "lymph",
+                     lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
+    } else {
+      return(NULL)
+    }
+  })
+
+  output$cd3GatesPlot <- renderPlot({
+    if (input$cd3_gates) {
+      fcs_files <- PTID_fcs()
+      print(plotGate(gs_HVTN065[fcs_files], "cd3",
+                     lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
+    } else {
+      return(NULL)
+    }
+  })
+
+  output$cd4cd8GatesPlot <- renderPlot({
+    if (input$cd4_cd8_gates) {
+      fcs_files <- PTID_fcs()
+      print(plotGate(gs_HVTN065[fcs_files], c(10, 23),
+                     lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
+    } else {
+      return(NULL)
+    }
+  })
+
+  
 })
