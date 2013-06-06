@@ -4,7 +4,7 @@ load.project()
 num_cores <- 12
 
 # Antigens (stimulation groups) that will be extracted
-antigens <- c("ENV-1-PTEG", "GAG-1-PTEG", "sebctrl", "negctrl")
+antigens <- c("ENV-1-PTEG", "GAG-1-PTEG", "POL-1-PTEG", "sebctrl", "negctrl")
 
 # The path of the root directory containing the FCS files
 fcs_path <- '/shared/silo_researcher/Gottardo_R/gfinak_working/HVTN065/FACSData'

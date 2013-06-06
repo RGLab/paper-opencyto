@@ -9,7 +9,7 @@ gating_template <- data.frame(
 
 gating_template <- rbind(gating_template,
                          c("viable", "viable-", "singlet", "ViViD", "flowClust", "K=3"),
-                         c("lymph", "lymph", "viable", "FSC-A,SSC-A", "flowClust", "K=2,target=c(5e4, 2.5e4)"),
+                         c("lymph", "lymph", "viable", "FSC-A,SSC-A", "flowClust", "K=2,target=c(5e4, 2.5e4),quantile=0.99"),
                          c("cd3", "cd3+", "lymph", "cd3", "mindensity", ""),
                          c("cd4_pos", "cd4+", "cd3", "cd4", "flowClust", "K=2"),
                          c("cd4_neg", "cd4-", "cd3", "cd4", "flowClust", "K=2"),
@@ -19,7 +19,7 @@ gating_template <- rbind(gating_template,
                          c("cd8", "cd4-cd8+", "cd3", "cd4,cd8", "refGate", "cd4_pos:cd8gate_neg"))
 
 # Cytokine Gates
-cytokine_tolerance <- seq_len(3)
+cytokine_tolerance <- seq_len(4)
 
 gt_TNFa <- lapply(cytokine_tolerance, function(tol) {
   rbind(c(paste0("TNFa_tol", tol), "TNFa+", "cd4", "TNFa", "cytokine", paste0("split='PTID:VISITNO',tol=1e-", tol)),
