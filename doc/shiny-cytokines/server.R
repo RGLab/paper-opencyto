@@ -33,13 +33,25 @@ shinyServer(function(input, output) {
     subset(cytokine_second_derivs, PTID == input$PTID & tcells == input$tcells)
   })
 
+  # Constructs dynamic slider bar with the candidate tolerance values for
+  # cytokine gates
+  output$cytokine_tol <- renderUI({
+    # The vector of tolerance values consists of positive integers sorted in
+    # decreasing order. We negate these values to agree with the logarithmic
+    # display. For instance, "3" displayed as "1e-3"
+    cytokine_tolerances <- -1 * cytokine_tolerances
+    sliderInput(inputId = "cytokine_tol", label = "Cytokine Cutpoint Tolerance",
+                min = min(cytokine_tolerances), max = max(cytokine_tolerances),
+                value = min(cytokine_tolerances), format = "1e-#")
+  })
+  
   # Determines the cutpoint based on the derivatives of the kernel density
   # estimates from the cells collapsed across stimulation groups for pair of
   # VISITNO and Cytokine
   cyto_cutpoints <- reactive({
     # In the UI, we display the tolerance values on the log-10 scale. Here, we
     # have to scale the value manually.
-    tol <- 10^input$cutpoint_tol
+    tol <- 10^input$cytokine_tol
 
     derivs_collapse <- subset(cytokine_derivs_collapse,
                               PTID == input$PTID & tcells == input$tcells)
@@ -64,10 +76,7 @@ shinyServer(function(input, output) {
     p1 <- p1 + xlim(input$x_range_density[1], input$x_range_density[2])
     p1 <- p1 + ylim(input$y_range_density[1], input$y_range_density[2])
     p1 <- p1 + ggtitle("Scaled Cytokine Densities")
-
-    if (input$display_cutpoint) {
-      p1 <- p1 + geom_vline(linetype = "dashed", aes(xintercept = cutpoint), data = cyto_cutpoints())
-    }
+    p1 <- p1 + geom_vline(linetype = "dashed", aes(xintercept = cutpoint), data = cyto_cutpoints())
     
     plot(p1)
   })
@@ -80,10 +89,7 @@ shinyServer(function(input, output) {
     p2 <- p2 + xlim(input$x_range_first_deriv[1], input$x_range_first_deriv[2])
     p2 <- p2 + ylim(input$y_range_first_deriv[1], input$y_range_first_deriv[2])
     p2 <- p2 + ylab("dy/dx")
-
-    if (input$display_cutpoint) {
-      p2 <- p2 + geom_vline(linetype = "dashed", aes(xintercept = cutpoint), data = cyto_cutpoints())
-    }
+    p2 <- p2 + geom_vline(linetype = "dashed", aes(xintercept = cutpoint), data = cyto_cutpoints())
     
     plot(p2)
   })
@@ -96,10 +102,7 @@ shinyServer(function(input, output) {
     p3 <- p3 + xlim(input$x_range_second_deriv[1], input$x_range_second_deriv[2])
     p3 <- p3 + ylim(input$y_range_second_deriv[1], input$y_range_second_deriv[2])
     p3 <- p3 + ylab("d^2y/dx^2")
-
-    if (input$display_cutpoint) {
-      p3 <- p3 + geom_vline(linetype = "dashed", aes(xintercept = cutpoint), data = cyto_cutpoints())
-    }
+    p3 <- p3 + geom_vline(linetype = "dashed", aes(xintercept = cutpoint), data = cyto_cutpoints())
     
     plot(p3)
   })
@@ -108,7 +111,15 @@ shinyServer(function(input, output) {
     if (input$TNFa_gates) {
       fcs_files <- PTID_fcs()
       tcells <- input$tcells
-      print(plotGate(gs_HVTN065[fcs_files], paste(tcells, "TNFa", sep = "/"),
+
+      # The tolerance values are set as negative numbers to induce a logarithmic
+      # scale. We take this value and negate it to identify the correct node in
+      # the gating tree.
+      tolerance_selected <- paste0("tol", -1 * input$cytokine_tol)
+      node_name <- paste(tcells, "TNFa", sep = "/")
+      node_name <- paste(node_name, tolerance_selected, sep = "_")
+
+      print(plotGate(gs_HVTN065[fcs_files], node_name,
                      lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
     } else {
       return(NULL)
@@ -119,8 +130,17 @@ shinyServer(function(input, output) {
     if (input$IFNg_gates) {
       fcs_files <- PTID_fcs()
       tcells <- input$tcells
-      print(plotGate(gs_HVTN065[fcs_files], paste(tcells, "IFNg", sep = "/"),
+
+      # The tolerance values are set as negative numbers to induce a logarithmic
+      # scale. We take this value and negate it to identify the correct node in
+      # the gating tree.
+      tolerance_selected <- paste0("tol", -1 * input$cytokine_tol)
+      node_name <- paste(tcells, "IFNg", sep = "/")
+      node_name <- paste(node_name, tolerance_selected, sep = "_")
+
+      print(plotGate(gs_HVTN065[fcs_files], node_name,
                      lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
+
     } else {
       return(NULL)
     }
@@ -130,7 +150,15 @@ shinyServer(function(input, output) {
     if (input$IL2_gates) {
       fcs_files <- PTID_fcs()
       tcells <- input$tcells
-      print(plotGate(gs_HVTN065[fcs_files], paste(tcells, "IL2", sep = "/"),
+
+      # The tolerance values are set as negative numbers to induce a logarithmic
+      # scale. We take this value and negate it to identify the correct node in
+      # the gating tree.
+      tolerance_selected <- paste0("tol", -1 * input$cytokine_tol)
+      node_name <- paste(tcells, "IL2", sep = "/")
+      node_name <- paste(node_name, tolerance_selected, sep = "_")
+
+      print(plotGate(gs_HVTN065[fcs_files], node_name,
                      lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
     } else {
       return(NULL)

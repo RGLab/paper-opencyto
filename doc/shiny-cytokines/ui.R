@@ -33,13 +33,7 @@ shinyUI(pageWithSidebar(
          sliderInput(inputId = "y_range_second_deriv", label = "Range - y-axis",
                 min = -3, max = 3, value = c(-1, 1), step = 0.25)              
       ),
-      checkboxInput(inputId = "display_cutpoint",
-                    label = strong("Display Cutpoint"),
-                    value = FALSE),
-      conditionalPanel(condition = "input.display_cutpoint == true",
-         sliderInput(inputId = "cutpoint_tol", label = "Cutpoint Tolerance",
-                min = -6, max = -1, value = -3, format = "1e#")
-      )
+      uiOutput("cytokine_tol")
     ),
     wellPanel(
       p(strong("Cytokine Gates")),
