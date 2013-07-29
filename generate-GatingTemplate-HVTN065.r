@@ -2,38 +2,40 @@
 # to an OpenCyto CSV file 
 
 gating_template <- data.frame(
-  alias = "singlet", pop = "singlet+", parent = "root", dims = "FSC-A,FSC-H",
-  method = "singletGate", args = "prediction_level=0.999",
-  stringsAsFactors = FALSE
+                              alias = "burnin", pop = "burnin", parent = "root",
+                              dims = "Time", method = "boundary", args = "min=1000",
+                              stringsAsFactors = FALSE
 )
 
 gating_template <- rbind(gating_template,
-                         c("viable", "viable-", "singlet", "ViViD", "flowClust", "K=3"),
-                         c("lymph", "lymph", "viable", "FSC-A,SSC-A", "flowClust", "K=2,target=c(5e4, 2.5e4),quantile=0.99"),
+                         c("boundary", "boundary", "burnin", "FSC-A,SSC-A", "boundary", "max=c(2.5e5,2.5e5)"),
+                         c("debris", "debris", "boundary", "FSC-A", "mindensity", "gate_range=c(0,1e5),adjust=1.5"),
+                         c("singlet", "singlet", "debris", "FSC-A,FSC-H", "singletGate", "prediction_level=0.999,wider_gate=TRUE,subsample_pct=0.25"),
+                         c("viable", "viable-", "singlet", "ViViD", "mindensity", "gate_range=c(1,2.5)"),
+                         c("lymph", "lymph", "viable", "FSC-A,SSC-A", "flowClust", "K=2,quantile=0.99"),
                          c("cd3", "cd3+", "lymph", "cd3", "mindensity", ""),
-                         c("cd4_pos", "cd4+", "cd3", "cd4", "flowClust", "K=2"),
-                         c("cd4_neg", "cd4-", "cd3", "cd4", "flowClust", "K=2"),
-                         c("cd8gate_pos", "cd8+", "cd3", "cd8", "flowClust", "K=2"),
-                         c("cd8gate_neg", "cd8-", "cd4_neg", "cd8", "flowClust", "K=2"),
-                         c("cd4", "cd4+cd8-", "cd3", "cd4,cd8", "refGate", "cd4_pos:cd8gate_pos"),
-                         c("cd8", "cd4-cd8+", "cd3", "cd4,cd8", "refGate", "cd4_pos:cd8gate_neg"))
+                         c("*", "cd4+/-", "cd3", "cd4", "mindensity", ""),
+                         c("cd8gate_pos", "cd8+", "cd3", "cd8", "mindensity", ""),
+                         c("cd8gate_neg", "cd8-", "cd4-", "cd8", "mindensity", ""),
+                         c("cd4", "cd4+cd8-", "cd3", "cd4,cd8", "refGate", "cd4+:cd8gate_pos"),
+                         c("cd8", "cd4-cd8+", "cd3", "cd4,cd8", "refGate", "cd4-:cd8gate_neg"))
 
 # Cytokine Gates
 cytokine_tolerance <- seq_len(4)
 
 gt_TNFa <- lapply(cytokine_tolerance, function(tol) {
-  rbind(c(paste0("TNFa_tol", tol), "TNFa+", "cd4", "TNFa", "cytokine", paste0("split='PTID:VISITNO',tol=1e-", tol)),
-  c(paste0("TNFa_tol", tol), "TNFa+", "cd8", "TNFa", "cytokine", paste0("split='PTID:VISITNO',tol=1e-", tol)))
+  rbind(c(paste0("TNFa_tol", tol), "TNFa+", "cd4", "TNFa", "cytokine", paste0("adjust=2,split='PTID:VISITNO',tol=1e-", tol)),
+  c(paste0("TNFa_tol", tol), "TNFa+", "cd8", "TNFa", "cytokine", paste0("adjust=2,split='PTID:VISITNO',tol=1e-", tol)))
 })
 
 gt_IFNg <- lapply(cytokine_tolerance, function(tol) {
-  rbind(c(paste0("IFNg_tol", tol), "IFNg+", "cd4", "IFNg", "cytokine", paste0("split='PTID:VISITNO',tol=1e-", tol)),
-  c(paste0("IFNg_tol", tol), "IFNg+", "cd8", "IFNg", "cytokine", paste0("split='PTID:VISITNO',tol=1e-", tol)))
+  rbind(c(paste0("IFNg_tol", tol), "IFNg+", "cd4", "IFNg", "cytokine", paste0("adjust=2,split='PTID:VISITNO',tol=1e-", tol)),
+  c(paste0("IFNg_tol", tol), "IFNg+", "cd8", "IFNg", "cytokine", paste0("adjust=2,split='PTID:VISITNO',tol=1e-", tol)))
 })
 
 gt_IL2 <- lapply(cytokine_tolerance, function(tol) {
-  rbind(c(paste0("IL2_tol", tol), "IL2+", "cd4", "IL2", "cytokine", paste0("split='PTID:VISITNO',tol=1e-", tol)),
-  c(paste0("IL2_tol", tol), "IL2+", "cd8", "IL2", "cytokine", paste0("split='PTID:VISITNO',tol=1e-", tol)))
+  rbind(c(paste0("IL2_tol", tol), "IL2+", "cd4", "IL2", "cytokine", paste0("adjust=2,split='PTID:VISITNO',tol=1e-", tol)),
+  c(paste0("IL2_tol", tol), "IL2+", "cd8", "IL2", "cytokine", paste0("adjust=2,split='PTID:VISITNO',tol=1e-", tol)))
 })
 
 gt_cytokines <- do.call(rbind, c(gt_TNFa, gt_IFNg, gt_IL2))

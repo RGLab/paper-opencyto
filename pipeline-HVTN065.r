@@ -3,16 +3,16 @@ load.project()
 
 # Loads Gating Set
 gs_HVTN065 <- load_gs("/loc/no-backup/ramey/HVTN/065/gating-set/")
+# gs_HVTN065 <- load_gs("/loc/no-backup/ramey/HVTN/065/gating-results/")
 
 # Loads the GatingTemplate from the CSV file.
-gating_template <- gatingTemplate("gt-HVTN065.csv", "HVTN065")
+gating_template <- gatingTemplate("gt-HVTN065.csv")
 
 # Now we apply the automated pipeline to each gating set
 set.seed(42)
-
 start_time <- Sys.time()
-gating(gating_template, gs_HVTN065, prior_group = 'Stim', num_cores = 12,
-       parallel_type = "multicore")
+try(gating(gating_template, gs_HVTN065, prior_group = 'Stim', mc.cores = 10,
+       parallel_type = "multicore"))
 finish_time <- Sys.time()
 message("Time Elapsed:")
 print(finish_time - start_time)
@@ -26,12 +26,10 @@ pData_negctrl <- subset(pData_HVTN065, Stim == "negctrl")
 pData_negctrl <- ddply(pData_negctrl, .(PTID, VISITNO), transform,
                        Stim = paste0(Stim, seq_along(Stim)))
 pData_HVTN065[pData_HVTN065$Stim == "negctrl", ] <- pData_negctrl
-pData_HVTN065 <- subset(pData_HVTN065, select = c(name, PTID, Stim, VISITNO))
 pData(gs_HVTN065) <- pData_HVTN065
 
-
 # Archives the results
-save_gs(gs_HVTN065, path = "/loc/no-backup/ramey/HVTN/065/gating-results")
+save_gs(gs_HVTN065, path = "/loc/no-backup/ramey/HVTN/065/gating-set", overwrite = TRUE)
 
 # Extracts the population statistics
 popstats_HVTN065 <- getPopStats(gs_HVTN065)

@@ -165,6 +165,38 @@ shinyServer(function(input, output) {
     }
   })
 
+  output$burninGatesPlot <- renderPlot({
+    if (input$burnin_gates) {
+      fcs_files <- PTID_fcs()
+      print(plotGate(gs_HVTN065[fcs_files], "burnin",
+                     lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)",
+#                     formula = as.formula("'PE Cy7-A' ~ Time"),
+                     prepanel = function(){return(list(xlim = c(0,4000),ylim=c(1,250000)))}))
+    } else {
+      return(NULL)
+    }
+  })
+
+  output$boundaryGatesPlot <- renderPlot({
+    if (input$boundary_gates) {
+      fcs_files <- PTID_fcs()
+      print(plotGate(gs_HVTN065[fcs_files], "boundary",
+                     lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
+    } else {
+      return(NULL)
+    }
+  })
+
+  output$debrisGatesPlot <- renderPlot({
+    if (input$debris_gates) {
+      fcs_files <- PTID_fcs()
+      print(plotGate(gs_HVTN065[fcs_files], "debris",
+                     lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
+    } else {
+      return(NULL)
+    }
+  })
+
   output$singletGatesPlot <- renderPlot({
     if (input$singlet_gates) {
       fcs_files <- PTID_fcs()
@@ -208,7 +240,7 @@ shinyServer(function(input, output) {
   output$cd4cd8GatesPlot <- renderPlot({
     if (input$cd4_cd8_gates) {
       fcs_files <- PTID_fcs()
-      print(plotGate(gs_HVTN065[fcs_files], c(10, 23),
+      print(plotGate(gs_HVTN065[fcs_files], c("cd4", "cd8"),
                      lattice = TRUE, xbin = 128, cond = "factor(Stim):factor(VISITNO)"))
     } else {
       return(NULL)

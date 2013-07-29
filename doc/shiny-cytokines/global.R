@@ -2,7 +2,7 @@ setwd("~/rglab/papers/paper-opencyto")
 library(ProjectTemplate)
 load.project()
 
-gs_HVTN065 <- load_gs("/loc/no-backup/ramey/HVTN/065/gating-cytokines")
+gs_HVTN065 <- load_gs("/loc/no-backup/ramey/HVTN/065/gating-results")
 
 
 # Updates pData(...) to factors
@@ -26,7 +26,6 @@ pData_HVTN065 <- plyr:::join(pData_HVTN065, treatment_info)
 levels_PTID <- levels(pData_HVTN065$PTID)
 
 # Extract cytokine tolerance values from gating nodes.
-# TODO: Update cytokine-gate plotGate call to display specified tolerance values.
 cytokine_tolerances <- grep("_tol", getNodes(gs_HVTN065[[1]]), value = TRUE)
 cytokine_tolerances <- unique(sapply(strsplit(cytokine_tolerances, "_tol"), tail, n = 1))
 cytokine_tolerances <- sort(as.numeric(cytokine_tolerances), decreasing = TRUE)

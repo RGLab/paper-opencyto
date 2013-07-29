@@ -47,6 +47,15 @@ shinyUI(pageWithSidebar(
                     label = strong("IL2 Gates"),
                     value = FALSE),
       p(strong("Upstream Gates")),
+      checkboxInput(inputId = "burnin_gates",
+                    label = strong("Time Burn-in Gates"),
+                    value = FALSE),
+      checkboxInput(inputId = "boundary_gates",
+                    label = strong("Scatter Boundary Gates"),
+                    value = FALSE),
+      checkboxInput(inputId = "debris_gates",
+                    label = strong("Debris Gates"),
+                    value = FALSE),
       checkboxInput(inputId = "singlet_gates",
                     label = strong("Singlet Gates"),
                     value = FALSE),
@@ -94,6 +103,18 @@ shinyUI(pageWithSidebar(
                                 )
       ),
       tabPanel("Upstream Gates",
+               conditionalPanel(condition = "input.burnin_gates == true",
+                                p(strong("Time Burn-in Gates")),
+                                plotOutput("burninGatesPlot")
+                                ),
+               conditionalPanel(condition = "input.boundary_gates == true",
+                                p(strong("Scatter Boundary Gates")),
+                                plotOutput("boundaryGatesPlot")
+                                ),
+               conditionalPanel(condition = "input.debris_gates == true",
+                                p(strong("Debris Gates")),
+                                plotOutput("debrisGatesPlot")
+                                ),
                conditionalPanel(condition = "input.singlet_gates == true",
                                 p(strong("Singlet Gates")),
                                 plotOutput("singletGatesPlot")
