@@ -15,7 +15,8 @@
 #' row names
 pretty_popstats <- function(popstats) {
   # Remove all population statistics for the following markers
-  markers_remove <- c("root", "cd8gate_pos", "cd4_neg", "cd8gate_neg", "cd4_pos")
+  markers_remove <- c("root", "burnin", "boundary", "debris", "cd8gate_neg",
+                      "cd8gate_pos", "cd4-",  "cd4+", "singlet", "viable", "lymph")
   popstats_remove <- sapply(strsplit(rownames(popstats), "/"), tail, n = 1)
   popstats_remove <- popstats_remove %in% markers_remove
   popstats <- popstats[!popstats_remove, ]
@@ -23,7 +24,7 @@ pretty_popstats <- function(popstats) {
   rownames_popstats <- rownames(popstats)
 
   # Updates any markers with a tolerance value to something easier to parse.
-  # Example: "cd4:TNFa_tol1&cd4:IFNg_tol1&cd4:IL2_tol1" => "cd4:TNFa&cd4:IFNg&cd4:IL2_tol_1e-1"
+  # Example: "cd4:TNFa_tol1&cd4:IFNg_tol1&cd4:IL2_tol1" => "cd4:TNFa&cd4:IFNg&cd4:IL2_1e-1"
   which_tol <- grep("tol", rownames_popstats)
   tol_append <- sapply(strsplit(rownames_popstats[which_tol], "_tol"), tail, n = 1)
   rownames_popstats[which_tol] <- gsub("_tol.", "", rownames_popstats[which_tol])
@@ -283,6 +284,7 @@ classification_summary <- function(popstats, treatment_info, pdata,
 
   # Trains the 'glmnet' classifier using cross-validation.
   glmnet_cv <- cv.glmnet(x = train_x, y = train_y, family = "binomial", ...)
+  glmnet_fit <- glmnet(x = train_x, y = train_y, family = "binomial", ...)
 
   # Computes classification accuracies in two different ways. If the visits are
   # paired by patient, then we compute the proportion of correctly classified
@@ -320,7 +322,7 @@ classification_summary <- function(popstats, treatment_info, pdata,
   # If present, we manually remove the "(Intercept)"
   # In the case that all markers are removed and only the intercept remains, we
   # add the "(Intercept)" back, for clarity.
-  coef_glmnet <- coef(glmnet_cv)
+  coef_glmnet <- coef(glmnet_fit, s = glmnet_cv$lambda.min)
   markers_kept <- rownames(coef_glmnet)[as.vector(coef_glmnet) != 0]
   markers_kept <- markers_kept[!grepl("(Intercept)", markers_kept)]
   if (length(markers_kept) == 0) {

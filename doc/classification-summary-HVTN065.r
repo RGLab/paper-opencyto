@@ -24,8 +24,8 @@
 
 #+ setup, include=FALSE, cache=FALSE, echo=FALSE, warning=FALSE
 opts_chunk$set(fig.align = "default", dev = "png", message = FALSE, warning = FALSE, 
-  cache = FALSE, echo = FALSE, fig.path = "figure/HVTN065-", cache.path = "cache/HVTN065-", 
-  fig.width = 12, fig.height = 12)
+  cache = TRUE, echo = FALSE, fig.path = "figure/HVTN065-", cache.path = "cache/HVTN065-", 
+  fig.width = 16, fig.height = 16, autodep = TRUE)
 options(stringsAsFactors = FALSE)
 
 #+ load_data
@@ -46,29 +46,44 @@ treatment_info$Treatment <- replace(treatment_info$Treatment, grep("^Placebo", t
 popstats_cleaned <- pretty_popstats(popstats_HVTN065)
 counts_cleaned <- pretty_popstats(counts_HVTN065)
 
-# Finally, we remove the proportions of the marginal cytokines.
+#+ partitions_proportions
+
+# Finally, we remove the proportions of the marginal cytokines because we do not
+# wish to include them as features, given that we are using the polyfunctional
+# proportions as features.
 # For example, we remove "cd4:TNFa+_1e-1"
-popstats_cleaned <- popstats_cleaned[!grepl("cd[48]:(TNFa|IFNg|IL2)\\+_1e", rownames(popstats_cleaned)), ]
-rownames_popstats <- rownames(popstats_cleaned)
-which_cytokines <- grep("TNFa|IFNg|IL2", rownames_popstats)
+
+# Extracts the proportions for the upstream gates (CD3, CD4, and CD8)
+which_upstream <- !grepl("TNFa|IFNg|IL2", rownames(popstats_cleaned))
+popstats_upstream <- popstats_cleaned[which_upstream, ]
+popstats_cleaned <- popstats_cleaned[!which_upstream, ]
 
 # Determines which cytokine tolerances were used.
-cytokine_tolerances <- sapply(strsplit(rownames_popstats[which_cytokines], "_"), tail, n = 1)
+cytokine_tolerances <- sapply(strsplit(rownames(popstats_cleaned), "_"), tail, n = 1)
 cytokine_tolerances <- sort(unique(cytokine_tolerances))
 
-# Partitions the population statistics into upstream and cytokines for each
-# processing below. The cytokine population statistics are stored in a named
-# list, where each element corresponds to a cytokine tolerance value.
-# The tolerance value is then stripped from the marker names.
-#
-# We also remove TNFa-IFNg-IL2- and IL2+ | IFNg+
-popstats_upstream <- popstats_cleaned[-which_cytokines, ]
+# Extracts the marginal cytokine proportions as well as the proportions for the
+# polyfunctional gates.
+which_cytokines <- grepl("cd[48]:(TNFa|IFNg|IL2)\\+_1e", rownames(popstats_cleaned))
+which_polyfunc <- !which_cytokines
 popstats_cytokines <- popstats_cleaned[which_cytokines, ]
-popstats_cytokines <- popstats_cytokines[!grepl("TNFa-IFNg-IL2-", rownames(popstats_cytokines)), ]
-popstats_cytokines <- popstats_cytokines[!grepl("IL2\\+\\|IFNg\\+", rownames(popstats_cytokines)), ]
-popstats_cytokines <- partition_popstats(popstats_cytokines,
+popstats_polyfunc <- popstats_cleaned[which_polyfunc, ]
+
+# We update the population statistics for the polyfunctional gates and store
+# them in a named list, where each element corresponds to a cytokine tolerance
+# value. The tolerance value is then stripped from the marker names.
+#
+# We also remove TNFa-IFNg-IL2- and IL2+ | IFNg+. The TNFa-IFNg-IL2- is
+# redundant because the proportions sum to 1.  Also, we consider IL2+ | IFNg+
+# separately in a comparison with manual gates.
+popstats_polyfunc <- popstats_polyfunc[!grepl("TNFa-IFNg-IL2-", rownames(popstats_polyfunc)), ]
+popstats_polyfunc <- popstats_polyfunc[!grepl("IL2\\+\\|IFNg\\+", rownames(popstats_polyfunc)), ]
+popstats_polyfunc <- partition_popstats(popstats_polyfunc,
                                          tolerances = cytokine_tolerances)
 
+#+ partitions_counts, eval=FALSE
+
+# TODO: Update the summary of counts for the MIMOSA summary below.
 # Repeats the previous step but with the counts.
 rownames_counts <- rownames(counts_cleaned)
 which_tcell_subsets <- grep("cd[48]$", rownames_counts)
@@ -121,18 +136,24 @@ counts_cytokines <- lapply(counts_cytokines, function(x) {
 # The value of 'alpha = 0.5' is passed to 'glmnet' to indicate the usage of
 # elastic net.
 set.seed(42)
-GAG_results <- lapply(popstats_cytokines, classification_summary,
+GAG_results <- lapply(popstats_polyfunc, classification_summary,
                         treatment_info = treatment_info, pdata = pData_HVTN065,
                         stimulation = "GAG-1-PTEG", alpha = 0.5)
-ENV_results <- lapply(popstats_cytokines, classification_summary,
+ENV_results <- lapply(popstats_polyfunc, classification_summary,
                         treatment_info = treatment_info, pdata = pData_HVTN065,
                         stimulation = "ENV-1-PTEG", alpha = 0.5)
+POL_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "POL-1-PTEG", alpha = 0.5)
 
 # Constructs a ggplot2-friendly results data frame
 GAG_accuracy <- melt(lapply(GAG_results, function(x) rbind(unlist(x$accuracy))))[, -1]
 ENV_accuracy <- melt(lapply(ENV_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+POL_accuracy <- melt(lapply(POL_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+
 accuracy_results <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_accuracy),
-                          cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy))
+                          cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy),
+                          cbind(Stimulation = "POL-1-PTEG", POL_accuracy))
 colnames(accuracy_results) <- c("Stimulation", "Treatment", "Accuracy", "Tolerance")
 
 # + classification_paired_figure, results='asis'
@@ -156,10 +177,12 @@ p + theme(axis.title = element_text(size = 16))
 # Summarizes the classification probabilties for GAG and ENV.
 GAG_ROC <- ROC_summary(GAG_results, cytokine_tolerances)
 ENV_ROC <- ROC_summary(ENV_results, cytokine_tolerances)
+POL_ROC <- ROC_summary(POL_results, cytokine_tolerances)
 
 # Estimates ROC curves for GAG and ENV
 ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC),
-                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC))
+                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC),
+                    cbind(Stimulation = "POL-1-PTEG", POL_ROC))
 
 #+ ROC_figure, results='asis'
 
@@ -167,8 +190,8 @@ ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC),
 AUC_df <- ddply(ROC_curves, .(Stimulation, Tolerance), summarize,
                 AUC = trapz(FPR, TPR))
 AUC_df$AUC <- paste("AUC:", round(AUC_df$AUC, 3))
-AUC_df$x <- 0.5
-AUC_df$y <- replace(rep(0.5, nrow(AUC_df)), AUC_df$Stimulation == "GAG-1-PTEG", 0.55)
+AUC_df$x <- 0.75
+AUC_df$y <- rep(c(0.55, 0.5, 0.45), each = length(cytokine_tolerances))
 
 # Creates a single plot containing ROC curves for both stimulation groups.
 # Also, displays AUC's as text on plot.
@@ -176,7 +199,7 @@ p <- ggplot(ROC_curves, aes(x = FPR, y = TPR))
 p <- p + geom_line(aes(color = Stimulation), size = 1.5)
 p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
 p <- p + geom_text(data = AUC_df, aes(label = AUC, x = x, y = y, color = Stimulation))
-p <- p + theme_bw() + ggtitle("ROC Curves for ENV and GAG Stimulated Samples")
+p <- p + theme_bw() + ggtitle("ROC Curves by Stimulation Group")
 p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)")
 
 #' Here, we provide the markers that were selected by 'glmnet' for each
@@ -199,6 +222,14 @@ ENV_markers <- do.call(cbind, lapply(ENV_markers, function(x) {
 }))
 ENV_markers <- data.frame(ENV_markers, check.names = FALSE)
 
+POL_markers <- lapply(POL_results, function(x) x$markers)
+num_markers <- max(sapply(POL_markers, length))
+POL_markers <- do.call(cbind, lapply(POL_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+POL_markers <- data.frame(POL_markers, check.names = FALSE)
+
 #' ### Markers Selected by `glmnet` for GAG-1-PTEG
 #+ markers_GAG, results='asis'
 print(xtable(GAG_markers), include.rownames = FALSE, type = "html")
@@ -206,6 +237,10 @@ print(xtable(GAG_markers), include.rownames = FALSE, type = "html")
 #' ### Markers Selected by `glmnet` for ENV-1-PTEG
 #+ markers_ENV, results='asis'
 print(xtable(ENV_markers), include.rownames = FALSE, type = "html")
+
+#' ### Markers Selected by `glmnet` for POL-1-PTEG
+#+ markers_POL, results='asis'
+print(xtable(POL_markers), include.rownames = FALSE, type = "html")
 
 #' ## Classification with IFNg+ | IL2+
 
@@ -226,12 +261,17 @@ GAG_results <- lapply(popstats_positivity, classification_summary_logistic,
 ENV_results <- lapply(popstats_positivity, classification_summary_logistic,
                         treatment_info = treatment_info, pdata = pData_HVTN065,
                         stimulation = "ENV-1-PTEG")
+POL_results <- lapply(popstats_positivity, classification_summary_logistic,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "POL-1-PTEG")
 
 # Constructs a ggplot2-friendly results data frame
 GAG_accuracy <- melt(lapply(GAG_results, function(x) rbind(unlist(x$accuracy))))[, -1]
 ENV_accuracy <- melt(lapply(ENV_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+POL_accuracy <- melt(lapply(POL_results, function(x) rbind(unlist(x$accuracy))))[, -1]
 accuracy_results <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_accuracy),
-                          cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy))
+                          cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy),
+                          cbind(Stimulation = "POL-1-PTEG", POL_accuracy))
 colnames(accuracy_results) <- c("Stimulation", "Treatment", "Accuracy", "Tolerance")
 
 # + classification_positivity_figure, results='asis'
@@ -255,10 +295,12 @@ p + theme(axis.title = element_text(size = 16))
 # Summarizes the classification probabilties for GAG and ENV.
 GAG_ROC <- ROC_summary(GAG_results, cytokine_tolerances)
 ENV_ROC <- ROC_summary(ENV_results, cytokine_tolerances)
+POL_ROC <- ROC_summary(POL_results, cytokine_tolerances)
 
 # Estimates ROC curves for GAG and ENV
 ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC),
-                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC))
+                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC),
+                    cbind(Stimulation = "POL-1-PTEG", POL_ROC))
 
 #+ ROC_positivity_figure, results='asis'
 
@@ -267,15 +309,15 @@ AUC_df <- ddply(ROC_curves, .(Stimulation, Tolerance), summarize,
                 AUC = trapz(FPR, TPR))
 AUC_df$AUC <- paste("AUC:", round(AUC_df$AUC, 3))
 AUC_df$x <- 0.5
-AUC_df$y <- replace(rep(0.5, nrow(AUC_df)), AUC_df$Stimulation == "GAG-1-PTEG", 0.55)
+AUC_df$y <- rep(c(0.55, 0.5, 0.45), each = length(cytokine_tolerances))
 
 # Creates a single plot containing ROC curves for both stimulation groups.
 # Also, displays AUC's as text on plot.
 p <- ggplot(ROC_curves, aes(x = FPR, y = TPR))
-p <- p + geom_line(aes(color = Stimulation))
+p <- p + geom_line(aes(color = Stimulation), size = 1.5)
 p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
 p <- p + geom_text(data = AUC_df, aes(label = AUC, x = x, y = y, color = Stimulation))
-p <- p + theme_bw() + ggtitle("ROC Curves for ENV and GAG Stimulated Samples")
+p <- p + theme_bw() + ggtitle("ROC Curves by Stimulation Group")
 p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)")
 
 
@@ -331,10 +373,8 @@ AUC_df_manual$y <- replace(rep(0.5, nrow(AUC_df_manual)), AUC_df_manual$Stimulat
 p <- ggplot(ROC_curves_manual, aes(x = FPR, y = TPR))
 p <- p + geom_line(aes(color = Stimulation), size = 1.5)
 p <- p + geom_text(data = AUC_df_manual, aes(label = AUC, x = x, y = y, color = Stimulation))
-p <- p + theme_bw() + ggtitle("ROC Curves for ENV and GAG Stimulated Samples")
+p <- p + theme_bw() + ggtitle("ROC Curves by Stimulation Group")
 p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)")
-
-
 
 
 #' ## MIMOSA Results
