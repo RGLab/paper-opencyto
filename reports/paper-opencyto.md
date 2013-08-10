@@ -84,11 +84,10 @@ only define a gating hierarchy in a CSV template file.
 Using the OpenCyto framework, we demonstrate that automated gating can perform
 as well or better than manual gating to identify responding T-cell
 subpopulations in vaccine clinical trial data. We demonstrate that the OpenCyto
-framework can recapitulate manual-gating efforts obtained on intracellular
-cytokine staining (ICS) data sets from the Human Immunology Project Consortium
-(HIPC) and the HIV Vaccine Trials Network (HVTN). Specifically, we use the HVTN
-065 Data Set from \cite{Goepfert:2011ci} and the ITN507ST Data Set from
-\cite{Newell:2010jo}. From the resulting gates, we can apply multivariate
+framework can recapitulate manual-gating efforts obtained on an intracellular
+cytokine staining (ICS) data set from the HIV Vaccine Trials Network
+(HVTN). Specifically, we use the HVTN 065 Data Set from
+\cite{Goepfert:2011ci}. From the resulting gates, we can apply multivariate
 analysis using subsets of cellular subpopulations. For the manual gating as well
 as OpenCyto, we calculated the coefficients of variation of cellular population
 proportions across the samples and found that the variability from OpenCyto is
@@ -114,7 +113,6 @@ especially useful in subpopulations of interest where outliers or data artifacts
 within a single sample yield a poor automated gate. Effectively, to correct
 problem gates, we identify similar samples from which we obtain a gate or
 additional data from which we can reapply the gating algorithm.
-
 
 ## The OpenCyto Framework
 
@@ -207,8 +205,7 @@ We explicity ignored TNFa-IFNg-IL2- because it is redundant given the other
 seven features.
 
 **TODO**: Add MFI's to model to see if it helps. (This should improve paper's
-  journal quality) See Herzenberg et al. (2011) for a better understanding of
-  MFI.
+  journal quality)
 
 Our goal was to classify the vaccination status of the patient cohorts from the
 proportions of the polyfunctional populations of the three cytokines.
@@ -273,21 +270,15 @@ difference in classification probabilties for visits 2 and 12 and then order by
 the differences.
 
 
-* Discuss data sets and results
-    * Data set \#1: HVTN 065
+* Discuss data set and results
+    * Data set: HVTN 065
         * **TODO**
-            * Clean up HVTN065 results and update summaries.
+            * Update summaries.
             * Question RG wants us to answer: Do features selected on HVTN065
                correlate with antibody response?
             * My clarifying questions:
               * Where are antibody responses recorded? (In CSV file?)
               * How to measure the correlation to answer RG's questions?
-    * Data set \#2: ITN507ST from \cite{Newell:2010jo}
-        * Demonstrate two gates
-            1. Cytokine gate
-            2. Transitional gate
-        * Mention that we are looking for predictors of immunosuppression.
-        * **TODO**: Meet with Mike to polish gates
   * Results
     * Emphasize that OpenCyto yields similar results to the manual gating
     * Discuss the features selected by **glmnet**
