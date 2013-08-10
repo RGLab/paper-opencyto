@@ -29,7 +29,7 @@ opts_chunk$set(fig.align = "default", dev = "png", message = FALSE, warning = FA
 options(stringsAsFactors = FALSE)
 
 #+ load_data
-setwd("..")
+setwd("~/rglab/papers/paper-opencyto")
 library(ProjectTemplate)
 load.project()
 
@@ -99,7 +99,7 @@ counts_cytokines <- lapply(counts_cytokines, function(x) {
 
 #' ## Classification Accuracies of Visit Times Paired by Patients
 #'
-#' ## Summary of Simulation Design
+#' ### Summary of Simulation Design
 #'
 #' First, we partition the HVTN065 patients by their treatment status into a
 #' treatment group and placebo group. Of the patients in the treatment group, we
@@ -155,6 +155,8 @@ accuracy_results <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_accuracy),
                           cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy),
                           cbind(Stimulation = "POL-1-PTEG", POL_accuracy))
 colnames(accuracy_results) <- c("Stimulation", "Treatment", "Accuracy", "Tolerance")
+
+#' ### Results
 
 # + classification_paired_figure, results='asis'
 p <- ggplot(accuracy_results, aes(x = Stimulation, fill = Treatment))
@@ -241,6 +243,353 @@ print(xtable(ENV_markers), include.rownames = FALSE, type = "html")
 #' ### Markers Selected by `glmnet` for POL-1-PTEG
 #+ markers_POL, results='asis'
 print(xtable(POL_markers), include.rownames = FALSE, type = "html")
+
+
+### LASSO
+
+#' Next, we repeat the classification study using LASSO rather than elastic net.
+#' That is, we set the value of 'alpha = 1' in the 'glmnet' call.
+
+#+ classification_paired_LASSO
+
+set.seed(42)
+GAG_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "GAG-1-PTEG", alpha = 1)
+ENV_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "ENV-1-PTEG", alpha = 1)
+POL_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "POL-1-PTEG", alpha = 1)
+
+# Constructs a ggplot2-friendly results data frame
+GAG_accuracy <- melt(lapply(GAG_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+ENV_accuracy <- melt(lapply(ENV_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+POL_accuracy <- melt(lapply(POL_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+
+accuracy_results <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_accuracy),
+                          cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy),
+                          cbind(Stimulation = "POL-1-PTEG", POL_accuracy))
+colnames(accuracy_results) <- c("Stimulation", "Treatment", "Accuracy", "Tolerance")
+
+#' ### LASSO Results
+
+# + classification_paired_figure_LASSO, results='asis'
+p <- ggplot(accuracy_results, aes(x = Stimulation, fill = Treatment))
+p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + ylim(0, 1) + xlab("Stimulation Group") + ylab("Classification Accuracy")
+p <- p + ggtitle("Classification Accuracy of Visit Numbers Paired by Patient")
+p <- p + theme_bw() + theme(plot.title = element_text(size = 18))
+p <- p + theme(strip.text.y = element_text(size = 14))
+p <- p + theme(axis.text = element_text(size = 12))
+p + theme(axis.title = element_text(size = 16))
+
+#' Next, we calculate ROC curves assuming all vaccinees are true positive and
+#' the placebos are false positive.
+#' For each PTID, we compute the absolute value of the difference in
+#' classification probabilties for visits 2 and 12 and then order by the
+#' differences.
+
+#+ ROC_LASSO
+# Summarizes the classification probabilties for GAG and ENV.
+GAG_ROC <- ROC_summary(GAG_results, cytokine_tolerances)
+ENV_ROC <- ROC_summary(ENV_results, cytokine_tolerances)
+POL_ROC <- ROC_summary(POL_results, cytokine_tolerances)
+
+# Estimates ROC curves for GAG and ENV
+ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC),
+                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC),
+                    cbind(Stimulation = "POL-1-PTEG", POL_ROC))
+
+#+ ROC_figure_LASSO, results='asis'
+
+# The 'pracma:::trapz' function numerically integrates via the trapezoid method
+AUC_df <- ddply(ROC_curves, .(Stimulation, Tolerance), summarize,
+                AUC = trapz(FPR, TPR))
+AUC_df$AUC <- paste("AUC:", round(AUC_df$AUC, 3))
+AUC_df$x <- 0.75
+AUC_df$y <- rep(c(0.55, 0.5, 0.45), each = length(cytokine_tolerances))
+
+# Creates a single plot containing ROC curves for both stimulation groups.
+# Also, displays AUC's as text on plot.
+p <- ggplot(ROC_curves, aes(x = FPR, y = TPR))
+p <- p + geom_line(aes(color = Stimulation), size = 1.5)
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + geom_text(data = AUC_df, aes(label = AUC, x = x, y = y, color = Stimulation))
+p <- p + theme_bw() + ggtitle("ROC Curves by Stimulation Group")
+p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)")
+
+#' Here, we provide the markers that were selected by 'glmnet' for each
+#' stimulation group. In the case that `(Intercept)` is given, no markers are
+#' selected by `glmnet`, leaving only an intercept term.
+#+ markers_selected_LASSO
+GAG_markers <- lapply(GAG_results, function(x) x$markers)
+num_markers <- max(sapply(GAG_markers, length))
+GAG_markers <- do.call(cbind, lapply(GAG_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+GAG_markers <- data.frame(GAG_markers, check.names = FALSE)
+
+ENV_markers <- lapply(ENV_results, function(x) x$markers)
+num_markers <- max(sapply(ENV_markers, length))
+ENV_markers <- do.call(cbind, lapply(ENV_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+ENV_markers <- data.frame(ENV_markers, check.names = FALSE)
+
+POL_markers <- lapply(POL_results, function(x) x$markers)
+num_markers <- max(sapply(POL_markers, length))
+POL_markers <- do.call(cbind, lapply(POL_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+POL_markers <- data.frame(POL_markers, check.names = FALSE)
+
+#' ### Markers Selected by `glmnet` for GAG-1-PTEG
+#+ markers_GAG_LASSO, results='asis'
+print(xtable(GAG_markers), include.rownames = FALSE, type = "html")
+
+#' ### Markers Selected by `glmnet` for ENV-1-PTEG
+#+ markers_ENV_LASSO, results='asis'
+print(xtable(ENV_markers), include.rownames = FALSE, type = "html")
+
+#' ### Markers Selected by `glmnet` for POL-1-PTEG
+#+ markers_POL_LASSO, results='asis'
+print(xtable(POL_markers), include.rownames = FALSE, type = "html")
+
+
+#' ### Cytokine MFIs as Features
+
+#' Next, we investigate the classification performance by also using median
+#' flourescence intensities (MFIs) as features.
+
+#+ classification_paired_MFI
+set.seed(42)
+GAG_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "GAG-1-PTEG", alpha = 0.5, other_features = mfi_cytokines)
+ENV_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "ENV-1-PTEG", alpha = 0.5, other_features = mfi_cytokines)
+POL_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "POL-1-PTEG", alpha = 0.5, other_features = mfi_cytokines)
+
+# Constructs a ggplot2-friendly results data frame
+GAG_accuracy <- melt(lapply(GAG_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+ENV_accuracy <- melt(lapply(ENV_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+POL_accuracy <- melt(lapply(POL_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+
+accuracy_results <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_accuracy),
+                          cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy),
+                          cbind(Stimulation = "POL-1-PTEG", POL_accuracy))
+colnames(accuracy_results) <- c("Stimulation", "Treatment", "Accuracy", "Tolerance")
+
+#+ classification_paired_figure_MFI, results='asis'
+p <- ggplot(accuracy_results, aes(x = Stimulation, fill = Treatment))
+p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + ylim(0, 1) + xlab("Stimulation Group") + ylab("Classification Accuracy")
+p <- p + ggtitle("Classification Accuracy of Visit Numbers Paired by Patient")
+p <- p + theme_bw() + theme(plot.title = element_text(size = 18))
+p <- p + theme(strip.text.y = element_text(size = 14))
+p <- p + theme(axis.text = element_text(size = 12))
+p + theme(axis.title = element_text(size = 16))
+
+#' Next, we calculate ROC curves assuming all vaccinees are true positive and
+#' the placebos are false positive.
+#' For each PTID, we compute the absolute value of the difference in
+#' classification probabilties for visits 2 and 12 and then order by the
+#' differences.
+
+#+ ROC_MFI
+# Summarizes the classification probabilties for GAG and ENV.
+GAG_ROC <- ROC_summary(GAG_results, cytokine_tolerances)
+ENV_ROC <- ROC_summary(ENV_results, cytokine_tolerances)
+POL_ROC <- ROC_summary(POL_results, cytokine_tolerances)
+
+# Estimates ROC curves for GAG and ENV
+ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC),
+                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC),
+                    cbind(Stimulation = "POL-1-PTEG", POL_ROC))
+
+#+ ROC_figure_MFI, results='asis'
+
+# The 'pracma:::trapz' function numerically integrates via the trapezoid method
+AUC_df <- ddply(ROC_curves, .(Stimulation, Tolerance), summarize,
+                AUC = trapz(FPR, TPR))
+AUC_df$AUC <- paste("AUC:", round(AUC_df$AUC, 3))
+AUC_df$x <- 0.75
+AUC_df$y <- rep(c(0.55, 0.5, 0.45), each = length(cytokine_tolerances))
+
+# Creates a single plot containing ROC curves for both stimulation groups.
+# Also, displays AUC's as text on plot.
+p <- ggplot(ROC_curves, aes(x = FPR, y = TPR))
+p <- p + geom_line(aes(color = Stimulation), size = 1.5)
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + geom_text(data = AUC_df, aes(label = AUC, x = x, y = y, color = Stimulation))
+p <- p + theme_bw() + ggtitle("ROC Curves by Stimulation Group")
+p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)")
+
+#' Here, we provide the markers that were selected by 'glmnet' for each
+#' stimulation group. In the case that `(Intercept)` is given, no markers are
+#' selected by `glmnet`, leaving only an intercept term.
+#+ markers_selected_MFI
+GAG_markers <- lapply(GAG_results, function(x) x$markers)
+num_markers <- max(sapply(GAG_markers, length))
+GAG_markers <- do.call(cbind, lapply(GAG_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+GAG_markers <- data.frame(GAG_markers, check.names = FALSE)
+
+ENV_markers <- lapply(ENV_results, function(x) x$markers)
+num_markers <- max(sapply(ENV_markers, length))
+ENV_markers <- do.call(cbind, lapply(ENV_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+ENV_markers <- data.frame(ENV_markers, check.names = FALSE)
+
+POL_markers <- lapply(POL_results, function(x) x$markers)
+num_markers <- max(sapply(POL_markers, length))
+POL_markers <- do.call(cbind, lapply(POL_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+POL_markers <- data.frame(POL_markers, check.names = FALSE)
+
+#' ### Markers Selected by `glmnet` for GAG-1-PTEG
+#+ markers_GAG_MFI, results='asis'
+print(xtable(GAG_markers), include.rownames = FALSE, type = "html")
+
+#' ### Markers Selected by `glmnet` for ENV-1-PTEG
+#+ markers_ENV_MFI, results='asis'
+print(xtable(ENV_markers), include.rownames = FALSE, type = "html")
+
+#' ### Markers Selected by `glmnet` for POL-1-PTEG
+#+ markers_POL_MFI, results='asis'
+print(xtable(POL_markers), include.rownames = FALSE, type = "html")
+
+
+#' ### Cytokine MFIs as Features using LASSO
+
+#' Next, we investigate the classification performance by also using median
+#' flourescence intensities (MFIs) as features. Again, we use a LASSO classifier
+#' via 'glmnet' by setting 'alpha = 1'.
+
+#+ classification_paired_MFI_LASSO
+set.seed(42)
+GAG_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "GAG-1-PTEG", alpha = 1, other_features = mfi_cytokines)
+ENV_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "ENV-1-PTEG", alpha = 1, other_features = mfi_cytokines)
+POL_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "POL-1-PTEG", alpha = 1, other_features = mfi_cytokines)
+
+# Constructs a ggplot2-friendly results data frame
+GAG_accuracy <- melt(lapply(GAG_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+ENV_accuracy <- melt(lapply(ENV_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+POL_accuracy <- melt(lapply(POL_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+
+accuracy_results <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_accuracy),
+                          cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy),
+                          cbind(Stimulation = "POL-1-PTEG", POL_accuracy))
+colnames(accuracy_results) <- c("Stimulation", "Treatment", "Accuracy", "Tolerance")
+
+#+ classification_paired_figure_MFI_LASSO, results='asis'
+p <- ggplot(accuracy_results, aes(x = Stimulation, fill = Treatment))
+p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + ylim(0, 1) + xlab("Stimulation Group") + ylab("Classification Accuracy")
+p <- p + ggtitle("Classification Accuracy of Visit Numbers Paired by Patient")
+p <- p + theme_bw() + theme(plot.title = element_text(size = 18))
+p <- p + theme(strip.text.y = element_text(size = 14))
+p <- p + theme(axis.text = element_text(size = 12))
+p + theme(axis.title = element_text(size = 16))
+
+#' Next, we calculate ROC curves assuming all vaccinees are true positive and
+#' the placebos are false positive.
+#' For each PTID, we compute the absolute value of the difference in
+#' classification probabilties for visits 2 and 12 and then order by the
+#' differences.
+
+#+ ROC_MFI_LASSO
+# Summarizes the classification probabilties for GAG and ENV.
+GAG_ROC <- ROC_summary(GAG_results, cytokine_tolerances)
+ENV_ROC <- ROC_summary(ENV_results, cytokine_tolerances)
+POL_ROC <- ROC_summary(POL_results, cytokine_tolerances)
+
+# Estimates ROC curves for GAG and ENV
+ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC),
+                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC),
+                    cbind(Stimulation = "POL-1-PTEG", POL_ROC))
+
+#+ ROC_figure_MFI_LASSO, results='asis'
+
+# The 'pracma:::trapz' function numerically integrates via the trapezoid method
+AUC_df <- ddply(ROC_curves, .(Stimulation, Tolerance), summarize,
+                AUC = trapz(FPR, TPR))
+AUC_df$AUC <- paste("AUC:", round(AUC_df$AUC, 3))
+AUC_df$x <- 0.75
+AUC_df$y <- rep(c(0.55, 0.5, 0.45), each = length(cytokine_tolerances))
+
+# Creates a single plot containing ROC curves for both stimulation groups.
+# Also, displays AUC's as text on plot.
+p <- ggplot(ROC_curves, aes(x = FPR, y = TPR))
+p <- p + geom_line(aes(color = Stimulation), size = 1.5)
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + geom_text(data = AUC_df, aes(label = AUC, x = x, y = y, color = Stimulation))
+p <- p + theme_bw() + ggtitle("ROC Curves by Stimulation Group")
+p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)")
+
+#' Here, we provide the markers that were selected by 'glmnet' for each
+#' stimulation group. In the case that `(Intercept)` is given, no markers are
+#' selected by `glmnet`, leaving only an intercept term.
+#+ markers_selected_MFI_LASSO
+GAG_markers <- lapply(GAG_results, function(x) x$markers)
+num_markers <- max(sapply(GAG_markers, length))
+GAG_markers <- do.call(cbind, lapply(GAG_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+GAG_markers <- data.frame(GAG_markers, check.names = FALSE)
+
+ENV_markers <- lapply(ENV_results, function(x) x$markers)
+num_markers <- max(sapply(ENV_markers, length))
+ENV_markers <- do.call(cbind, lapply(ENV_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+ENV_markers <- data.frame(ENV_markers, check.names = FALSE)
+
+POL_markers <- lapply(POL_results, function(x) x$markers)
+num_markers <- max(sapply(POL_markers, length))
+POL_markers <- do.call(cbind, lapply(POL_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+POL_markers <- data.frame(POL_markers, check.names = FALSE)
+
+#' ### Markers Selected by `glmnet` for GAG-1-PTEG
+#+ markers_GAG_MFI_LASSO, results='asis'
+print(xtable(GAG_markers), include.rownames = FALSE, type = "html")
+
+#' ### Markers Selected by `glmnet` for ENV-1-PTEG
+#+ markers_ENV_MFI_LASSO, results='asis'
+print(xtable(ENV_markers), include.rownames = FALSE, type = "html")
+
+#' ### Markers Selected by `glmnet` for POL-1-PTEG
+#+ markers_POL_MFI_LASSO, results='asis'
+print(xtable(POL_markers), include.rownames = FALSE, type = "html")
+
 
 #' ## Classification with IFNg+ | IL2+
 

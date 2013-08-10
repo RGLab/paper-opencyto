@@ -35,27 +35,40 @@ save_gs(gs_HVTN065, path = "/loc/no-backup/ramey/HVTN/065/gating-set", overwrite
 popstats_HVTN065 <- getPopStats(gs_HVTN065)
 counts_HVTN065 <- getPopStats(gs_HVTN065, statistic = "count")
 
-# Extracts MFI for each sample
+# Extracts MFI for each cytokine (both CD4 and CD8) for each sample
 cytokine_markers <- data.frame(channel = c("Alexa 680-A", "PE Cy7-A", "PE Green laser-A"),
                                marker = c("TNFa", "IFNg", "IL2"), stringsAsFactors = FALSE)
 
 fs_cd4 <- getData(gs_HVTN065, "cd4")[, cytokine_markers$channel]
 fs_cd8 <- getData(gs_HVTN065, "cd8")[, cytokine_markers$channel]
 
-
 mfi_cd4 <- sapply(sampleNames(fs_cd4), function(fcs_file) {
   each_col(fs_cd4[[fcs_file]], median)
 })
 mfi_cd4 <- data.table(melt(mfi_cd4))
-setnames(mfi_cd4, colnames(mfi_cd4), c("Cytokine", "Sample", "MFI"))
+setnames(mfi_cd4, colnames(mfi_cd4), c("Marker", "Sample", "Value"))
+mfi_cd4$Marker <- as.character(mfi_cd4$Marker)
+mfi_cd4$Sample <- as.character(mfi_cd4$Sample)
 
 mfi_cd8 <- sapply(sampleNames(fs_cd8), function(fcs_file) {
   each_col(fs_cd8[[fcs_file]], median)
 })
 mfi_cd8 <- data.table(melt(mfi_cd8))
-setnames(mfi_cd8, colnames(mfi_cd8), c("Cytokine", "Sample", "MFI"))
+setnames(mfi_cd8, colnames(mfi_cd8), c("Marker", "Sample", "Value"))
+mfi_cd8$Marker <- as.character(mfi_cd8$Marker)
+mfi_cd8$Sample <- as.character(mfi_cd8$Sample)
 
+# Store marker names instead of channel names
+mfi_cd4$Marker <- with(cytokine_markers, marker[match(mfi_cd4$Marker, channel)])
+mfi_cd8$Marker <- with(cytokine_markers, marker[match(mfi_cd8$Marker, channel)])
 
-save(counts_HVTN065, popstats_HVTN065, pData_HVTN065, mfi_cd4, mfi_cd8,
+# Prepend marker names with "MFI_" and either CD4 or CD8
+mfi_cd4$Marker <- paste0("MFI_CD4:", mfi_cd4$Marker)
+mfi_cd8$Marker <- paste0("MFI_CD8:", mfi_cd8$Marker)
+
+# Merges cytokine MFIs into a single data.frame
+mfi_cytokines <- rbind(mfi_cd4, mfi_cd8)
+
+save(counts_HVTN065, popstats_HVTN065, pData_HVTN065, mfi_cytokines,
      file = "data/HVTN065-results.RData")
 
