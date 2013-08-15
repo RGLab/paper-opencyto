@@ -1,0 +1,978 @@
+\documentclass[11pt]{article}
+\usepackage{graphicx, bm, url, natbib, setspace, amsmath}
+
+\bibpunct{(}{)}{;}{a}{,}{,}
+
+\pagestyle{plain}
+%----------------Page dimensions ----------------
+\oddsidemargin 0.0in
+\evensidemargin 0.0in
+\topmargin -0.75in
+\leftmargin 0in
+\headheight 0.0in
+\headsep 0.5in
+%\footheight 0.0in
+\footskip 0.5in
+\footnotesep 0.0in
+\textwidth 6.5in
+\textheight 9.5in
+
+% Succinct way of setting TODO notes
+\newcommand{\todo}[1]{\footnote{TODO: #1}}
+
+\begin{document}
+
+\title{Automated Gating of Flow-Cytometry Data with the OpenCyto Framework}
+\author{John A. Ramey, Greg Finak, Mike Jiang, Jafar Taghiyar, Stephen de
+  Rosa,\\ Ryan Brinkman, and Raphael Gottardo}
+
+\maketitle
+
+<<setup, include=FALSE, cache=FALSE>>=
+opts_chunk$set(fig.align = "default", dev = "png", echo = FALSE, message = FALSE,
+               warning = FALSE, cache = TRUE, fig.path = "figure/HVTN065-",
+               cache.path = "cache/HVTN065-", # fig.width = 8, fig.height = 8,
+               autodep = TRUE)
+options(stringsAsFactors = FALSE)
+@
+
+<<load_data>>=
+# Given that we are in the './reports' directory, we set the working directory to
+# its parent directory, so that the 'ProjectTemplate' can be loaded properly.
+setwd("..")
+library("ProjectTemplate")
+load.project()
+@ 
+
+<<prettify_results>>=
+colnames(pData_HVTN065) <- c("Sample", "PTID", "Stimulation", "VISITNO")
+
+# Adds treatment group information to the proportion summary
+treatment_info <- data.frame(PTID = gsub("-", "", as.character(treatment.HVTN065$Ptid)), 
+  Treatment = "Treatment", stringsAsFactors = FALSE)
+treatment_info$Treatment <- replace(treatment_info$Treatment, grep("^Placebo", treatment.HVTN065$rx), 
+  "Placebo")
+
+# Prettifies popstats rownames
+popstats_cleaned <- pretty_popstats(popstats_HVTN065)
+counts_cleaned <- pretty_popstats(counts_HVTN065)
+@ 
+
+<<partitions_proportions>>=
+# Finally, we remove the proportions of the marginal cytokines because we do not
+# wish to include them as features, given that we are using the polyfunctional
+# proportions as features.
+# For example, we remove "cd4:TNFa+_1e-1"
+
+# Extracts the proportions for the upstream gates (CD3, CD4, and CD8)
+which_upstream <- !grepl("TNFa|IFNg|IL2", rownames(popstats_cleaned))
+popstats_upstream <- popstats_cleaned[which_upstream, ]
+popstats_cleaned <- popstats_cleaned[!which_upstream, ]
+
+# Determines which cytokine tolerances were used.
+cytokine_tolerances <- sapply(strsplit(rownames(popstats_cleaned), "_"), tail, n = 1)
+cytokine_tolerances <- sort(unique(cytokine_tolerances))
+
+# Extracts the marginal cytokine proportions as well as the proportions for the
+# polyfunctional gates.
+which_cytokines <- grepl("cd[48]:(TNFa|IFNg|IL2)\\+_1e", rownames(popstats_cleaned))
+which_polyfunc <- !which_cytokines
+popstats_cytokines <- popstats_cleaned[which_cytokines, ]
+popstats_polyfunc <- popstats_cleaned[which_polyfunc, ]
+
+# We update the population statistics for the polyfunctional gates and store
+# them in a named list, where each element corresponds to a cytokine tolerance
+# value. The tolerance value is then stripped from the marker names.
+#
+# We also remove TNFa-IFNg-IL2- and IL2+ | IFNg+. The TNFa-IFNg-IL2- is
+# redundant because the proportions sum to 1.  Also, we consider IL2+ | IFNg+
+# separately in a comparison with manual gates.
+popstats_polyfunc <- popstats_polyfunc[!grepl("TNFa-IFNg-IL2-", rownames(popstats_polyfunc)), ]
+popstats_polyfunc <- popstats_polyfunc[!grepl("IL2\\+\\|IFNg\\+", rownames(popstats_polyfunc)), ]
+popstats_polyfunc <- partition_popstats(popstats_polyfunc,
+                                         tolerances = cytokine_tolerances)
+
+@ 
+
+\doublespacing
+
+\begin{abstract}
+Advancements in flow-cytometry (FCM) technologies have enabled rapid
+quantification of multidimensional attributes for millions of individual cells
+to identify meaningful cellular subpopulations and to assess cellular
+heterogeneity. However, the analysis of the resulting large, high-dimensional
+data sets typically involves a subjective, time-consuming, sequential
+manual-gating strategy. To facilitate rapid analysis of high-throughput
+flow-cytometry data, we introduce the OpenCyto framework, a collection of
+well-integrated open-source R packages that delivers robust, reproducible, and
+data-driven gating in an automated pipeline. We demonstrate that OpenCyto can
+recapitulate manual-gating efforts obtained on an intracellular cytokine
+staining data set from the HIV Vaccine Trials Network. We calculated the
+coefficients of variation of cellular population proportions across the samples
+and found that the variability from OpenCyto is well within the range of that of
+manual gating, even for rare cellular subpopulations. Furthermore, using the
+gates constructed by OpenCyto, we were able to discriminate accurately the
+vaccination status of the subject cohorts as well as to identify the
+antigen-specific T-cells responding to the vaccine.
+\end{abstract}
+
+\section{Introduction}
+
+Advancements in flow-cytometry (FCM) technologies and instrumentation have
+enabled rapid quantification of multidimensional attributes for millions of
+individual cells to assess cellular heterogeneity and to identify meaningful,
+homogeneous cellular subpopulations through a process called gating. However,
+the analysis of the resulting large, high-dimensional data sets typically
+involves a time-consuming, sequential manual gating strategy that is inherently
+subjective as the gating depends on the individual performing the gating. This
+subjectivity can yield highly variable gate placement from person to person if
+an experiment is not well-controlled or if a marker is not well-resolved
+\citep{Aghaeepour:2013dg, Maecker:2012gl, Bashashati:2009em, Maecker:2005gm}.
+Furthermore, the manual construction of subjective gates greatly limits
+reproducibility and rapid analysis of high-throughput FCM data
+\citep{Pyne:2009ec, Hahne:2009hl}. Alternatively, automated, data-driven
+algorithms are necessary to expedite the gating of FCM data and to remove the
+subjectivity intrinsic to manual gating. This is particularly important in
+clinical trials where assays must be well controlled in order to generate data
+that is comparable over time \citep{Maecker:2012gl, Tarnok:2007eg,
+  Maecker:2005gm}.
+
+In recent years a large number of automated computational algorithms have been
+proposed \citep{Ge:2012hr, Aghaeepour:2010fv, Naumann:2010jn, Pyne:2009ec,
+  Lo:2008it, Chan:2008gq}, many of which have been shown to identify cellular
+populations both reliably and accurately in a series of challenges within the
+Flow Cytometry: Critical Assessment of Population Identification Methods
+(FlowCAP) project \citep{Aghaeepour:2013dg}. Despite the level of efficacy and
+maturity that data-driven FCM algorithms have achieved, the software packages
+available for these algorithms typically provide individual solutions that are
+customized for an experiment-specific analysis, are too complex for the average
+user, and are inadequate in reliably generating accessible quantified results
+from the raw FCM data obtained for a large number of samples and experiments
+\citep{McNeil:2013du, Maecker:2010fg}. \cite{McNeil:2013du} and
+\cite{Maecker:2012gl} have argued that the resources to enable a standardized
+application of appropriate solutions to most common FCM immunophenotyping
+challenges is missing and have called for standard, easy-to-use software that:
+1. can produce unbiased, reproducible analyses of FCM data, 2. is robust to
+differences in experimental conditions, 3. is computationally efficient in
+analyzing large data sets, and 4. is readily available to the entire FCM
+community.\todo{Ensure that we address each of the 4 points. For example:
+  3. Memory efficiency and parallel processing. 4. Open-Source along with its
+  importance (e.g., it is often difficult to understand the details of closed
+  proprietary software. This can be frustrating and difficult to work with when
+  determining a suitable gating algorithm.} Additionally, despite their success
+in recapitulating manual gating, FCM algorithms have not reached their full
+potential due to a lack of an automated-analysis platform to complement
+high-throughput data generation \citep{Aghaeepour:2010fv}.
+
+In an effort to streamline automated analysis of FCM data, we introduce the
+OpenCyto framework, a collection of well-integrated open-source R packages that
+delivers robust, reproducible, and data-driven gating of high-dimensional FCM
+data sets quickly, removing the time-consuming task of manual gating. OpenCyto
+attains accurate gating of cell populations, including rare populations, while
+controlling variability relative to manual gating, thereby overcoming the
+subjectivity in manual gating. For a given gating hierarchy, OpenCyto promotes
+relatively fast and exhaustive gating that is interpretable in the context of
+standard hierarchical, two-dimensional projections of cell populations, which
+immunologists and other analysts are used to seeing. Our automated gating
+approach allows gating thresholds to be fine-tuned to optimize detection of
+informative cell populations in order to discriminate between patient cohorts
+based on objective external criteria such as vaccination status.
+
+The OpenCyto framework includes several gating algorithms that are flexible,
+robust, and applicable to a wide variety of experimental conditions\todo{Create
+  a table of built-in Gating Algorithms.}. In addition to the core gating
+algorithms, custom gating algorithms can be included via a plugin by easily
+incorporating by inputting and outputting standard \textbf{flowCore} objects
+\todo{Citation needed}. For standard analyses, OpenCyto requires relatively few
+lines of R code, and a user need only define a gating hierarchy in a
+comma-separated values (CSV) file. In addition to allowing custom algorithms,
+OpenCyto enables a bioinformatician to use a variety of automated algorithms for
+various gating scenarios. This flexibility is especially useful because some
+gating algorithms are specialized to handle special cases, such as rare cellular
+subpopulations. OpenCyto also incorporates a quality-control feature to detect
+unsatisfactory gates constructed automatically. Such cases can occur due to poor
+resolution within a sample, outliers, spurious data artifacts due to faulty
+experiments, or limited sample size \citep{Bocsi:2008cv}. Problematic gates can
+then either be updated manually or corrected automatically by borrowing a
+superior gate constructed from a similar sample.
+
+Our contribution to the FCM literature addresses the need for an automated
+pipeline to expedite FCM data analysis. To demonstrate the efficacy of the
+OpenCyto framework, we show that automated gating can perform as well or better
+than manual gating to identify responding T-cell subpopulations in vaccine
+clinical trial data. We demonstrate that the OpenCyto framework can recapitulate
+manual-gating efforts obtained on an intracellular cytokine staining (ICS) data
+set from the National Institute of Allergy and Infectious Diseases HIV Vaccine
+Trials Network (HVTN). Specifically, we apply OpenCyto to an HVTN data set from
+\cite{Goepfert:2011ci} and then perform a multivariate analysis using subsets of
+cellular subpopulations identified from the automatic gates. For the manual
+gating as well as OpenCyto, we calculated the coefficients of variation of
+cellular population proportions across the samples and found that the
+variability from OpenCyto is well within the range of that of manual gating,
+even for rare cellular subpopulations. Furthermore, based on the gates
+constructed by OpenCyto, we were able to discriminate accurately the vaccination
+status of the patient cohorts as well as to identify the antigen-specific
+T-cells responding to the vaccine. We utilized the separation of meaningful
+cellular subpopulations identified via automated gating (pre- and
+post-vaccination) to identify patients with a vaccine response. Furthermore,
+\cite{McNeil:2013du} have called for software and algorithms to identify more
+precisely and quantify rare antigen-specific cells of interest. We introduce a
+gating algorithm specifically designed for rare subpopulations, namely
+cytokines. Finally, OpenCyto is clearly valuable in its ability to construct
+data-driven gates and reproducibly identify associated biomarkers to distinguish
+vaccination status within a cohort in clinical trial data.
+
+We have organized the remainder of the paper as follows. In Section 2, we
+describe the OpenCyto framework in greater detail. In Section 3, we present our
+analysis of the HVTN065 data set from \cite{Goepfert:2011ci} and compare the
+gates and the vaccination-prediction efficacy of the automated gates obtained
+from OpenCyto to manually constructed gates. We conclude with a discussion in
+Section 4.
+
+
+\section{The OpenCyto Framework}
+
+We have developed the OpenCyto framework, a collection of well-integrated
+open-source R packages that delivers robust, reproducible, and data-driven
+gating in an automated pipeline. OpenCyto is easy to use as very little R code
+is necessary for standard analyses. In fact, most analyses can be performed with
+three lines of code\todo{Provide an example?  Michael Lawrence does this in his
+  Genomic Ranges paper} after importing flowJo\todo{Citation needed} workspaces
+via the flowWorkspace R package\todo{Citation needed} and then gated
+automatically with OpenCyto. To use OpenCyto, a gating hierarchy is supplied by
+the user in a CSV format. By defining a gating hierarchy in the CSV file, the
+user defines a simple and reproducible hierarchy. At each node within the gating
+hierarchy, the user specifies the population name, its parent population, the
+gating algorithm to apply, and optional algorithm arguments.
+
+Additionally, OpenCyto provides several techniques to preprocess samples,
+construct Boolean gates, and conduct backgating strategies. An optional
+preprocessing method can be specified for a given population. In this manner,
+samples within a cohort can be standardized and transformed in order to dampen
+the effect of outliers, to place the cell measurements on the same scale, and to
+borrow information from samples to strengthen the gating of samples with
+spurious artifacts. Standard Boolean gating can be incorporated in the CSV file
+by first defining the individual populations of interest. Then, a separate entry
+within the CSV file is added to indicate that a polyfunctional gate should be
+constructed from the populations of interest. OpenCyto also provides the option
+to pool several samples based on phenotypic data into a single sample before
+constructing a common uniform gate. Such a technique has been shown to reduce
+variability in manual gate placement \citep{McNeil:2013du}. We have found that
+in some scenarios a similar uniform-gating strategy can greatly improve the
+gating by borrowing information from other samples within the same cohort. For
+example, if the separation of a positive and a negative population of a single
+sample is poor so that the density of the positive population is merely a
+shoulder, the separation within other samples can be useful in aiding gate
+placement.
+
+Although automated gating algorithms have matured such that manual gating is
+seldom necessary, full automation is often untenable because small sample sizes,
+outliers or spurious artifacts within a single sample can cause an algorithm to
+construct an unsatisfactory gate \citep{Bocsi:2008cv}. Hence, it is imperative
+that diagnostic tools be readily available to identify quickly such failures and
+that inadequate gates can be updated either automatically or manually via a
+backgating strategy \citep{McNeil:2013du}. Within the OpenCyto framework, we
+provide several methods to determine statistically whether a gate is poorly
+placed based on either the proportion of cells gates or based on the position of
+the gate. These sanity checks are especially useful in subpopulations of
+interest where outliers or data artifacts within a single sample yield an
+inadequate gate. OpenCyto utilizes a quality-control detection feature to
+identify cases where the proportion of cells in an identified population of
+interest differs significantly from other similar samples, namely those within
+the same phenotypic cohort. For automatic correction of problem gates, we
+identify similar samples from which we obtain a gate or additional data from
+which we can reapply the gating algorithm. Moreover, OpenCyto provides the
+option to use a gate from a similar sample or to mark the sample so that a user
+can manually construct a gate.
+
+For a given gating hierarchy, OpenCyto promotes relatively fast and exhaustive
+gating that is interpretable in the context of standard hierarchical,
+two-dimensional projections of cell populations, which immunologists and other
+analysts are used to seeing. After a gating hierarchy has been defined within
+the CSV file with the various gating algorithms and options has been defined,
+gates are constructed for each sample using the data.\todo{Explain this in much
+  greater detail so that there is no confusion about where the data come from at
+  each point in the hierarchy.} OpenCyto can rapidly process a large number of
+samples so that they are gated in a relatively short amount of time and require
+limited system resources. OpenCyto can handle an extremely large number of
+samples via a disk-based storage scheme with a system infrastructure built with
+the well-known HDF5, NetCDF, and boost C++ libraries, which are accessible
+within R via the flowWorkspace and ncdfFlow R packages available on
+Bioconductor. Because samples are loaded into memory only as they are needed,
+OpenCyto yields a memory-efficient approach to analyzing a large number of
+samples. We also incorporate the usage of parallel processing to improve greatly
+computational performance. OpenCyto takes advantage of modern multicore systems
+as well as high-performance computing systems that contain a large network of
+computers nodes. This enables several samples to be gated simultaneously,
+substantially reducing the computational runtime of the gating process. If the
+user's system is equipped for parallel processing, the user can activate
+parallel processing for gating by simply providing an optional argument to
+OpenCyto.
+
+We have included several gating algorithms within OpenCyto. The algorithms
+included range from fast, simple algorithms for finding gating thresholds for
+easy-to-gate upstream markers (e.g., CD3) to more sophisticated gating
+algorithms to identify rare, antigen-specific cellular subpopulations of
+interest, such as cytokines. We have also provided robust algorithms for
+identifying populations of interest using higher-dimensional samples rather than
+two-dimensional gates. Furthermore, we provide robust gating options based on a
+Bayesian mixture model via \textbf{flowClust 3.0}, which allows marker-specific,
+expert and data-driven prior knowledge into the gating process via a Bayesian
+framework.\todo{In Supplementary Info, include example of prior and posterior
+  for a single sample.} OpenCyto enables a bioinformatician to use a variety of
+automated algorithms for various gating scenarios. This flexibility is
+especially useful because some gating algorithms are specialized to handle
+special cases, such as rare cellular subpopulations. Also, this is useful for
+automatic detection when several populations (clusters) of interest are
+present. Gating parameters can be optimized to discriminate between patient
+cohorts (e.g., vaccination status).
+
+For investigation of nonstandard gating scenarios with new gating algorithms,
+users can easily incorporate custom gating algorithms via a plugin system. A
+user-defined function is specified that receives a sample using a
+\textbf{flowCore} \textbf{flowFrame} object and outputs a gate constructed as a
+\textbf{flowCore} \textbf{filter} object. Because OpenCyto provides the
+infrastructure for gating a large collection of samples, the user can rapidly
+prototype different gating approaches and examine the efficacy of several
+candidate gating algorithms and determine optimal gating arguments, such as
+tuning parameters.
+
+\section{Analysis of the HVTN 065 Data Set}
+
+Here, we investigate an application of OpenCyto to the HVTN 065 ICS data set
+from \cite{Goepfert:2011ci}. First we describe the HVTN 065 data set in more
+detail and then discuss the gating strategy employed. Next, we provide several
+gates obtained automatically from OpenCyto. We then compare proportions of
+populations of interest from both the automatic gating as well as manual
+gating.\todo{Determine more details about the manual gating.} The gates obtained
+automatically from OpenCyto yielded coefficients of variation well within the
+range of those computes from manually constructed gates. Then, we performed a
+multivariate analysis by extracting the proportion of each cellular
+subpopulation of interest relative to its parent population. By extracting these
+proportions from the gates constructed by OpenCyto, we were able to discriminate
+accurately the vaccination status of the patient cohorts as well as to identify
+the antigen-specific T-cells responding to the vaccine. Also, we utilized the
+separation of meaningful cellular subpopulations identified via automated gating
+(pre- and post-vaccination) to identify patients with a vaccine response.
+
+\subsection{HVTN065 Data Set}
+
+\cite{Goepfert:2011ci} reported the HVTN protocol 065 phase 1 clinical
+trial. The efficacy trial was randomized, double-blind, and placebo-controlled
+trial, and conducted at 6 clinical sites in the United States. Participants
+consisted of 120 healthy adults aged 18-49 years. Measurements of HIV-specific
+T-cell responses were recorded using ICS at HVTN central laboratories on frozen
+samples. Three sets of global potential T cell epitope peptide pools were used:
+ENV (3 pools), GAG (2 pools), and POL (3 pools). Responses for CD4+ and CD8+ T
+cells were recorded with respect to the three peptide pools based on cells
+producing IFN$\gamma$ or IL2 following stimulation. Manual gates were
+constructed to determine cytokine response. Of the three peptide pools,
+responses were primarily detected in the GAG and ENV peptide pools. Moreover,
+HIV-1-specific T-cell responses were determined to be much stronger for the CD4+
+responses than the CD8+ responses. Cells were first stained with the Violet
+Live/Dead Fixable Dead Cell Stain and then stained with the following reagents:
+CD3-ECD, CD4-FITC, CD8-PerCP-Cy5.5, IFN$\gamma$-PE-Cy7, IL2-PE,
+TNF$\alpha$-Alexa 700, and IL4-APC.
+
+Samples were obtained from each patient at time points 2 (pre-vaccine) and 12
+(post-vaccine). We consider specifically the peptide pools with the strongest
+response from each peptide pool: GAG-1-PTEG, ENV-1-PTEG, and POL-1-PTEG. Hence,
+for each time point, there were three stimulated samples along with two negative
+controls, resulting in 10 FCS files per patient (5 per time point). We
+considered only those FCS files having at least 100,000 cells. This reduced the
+number of patients to 73, 63 of whom were treated patients, while the remaining
+10 patients were placed in the placebo cohort.\todo{Mention the total size of
+  the FCS files to praise the memory efficiency of OpenCyto.}\todo{Include a
+  subsection entitled \textbf{FCS File Description} and word it similar to page
+  3 of \cite{McNeil:2013du}}
+
+Before gating the samples automatically with OpenCyto, we calculated spillover
+matrices from compensation control samples using the \textbf{flowCore} R
+package\todo{Citation needed.}. Across all samples, each channel was transformed
+with a common logicle transformation \citep{Parks:2006ga}. For each channel, the
+width of the logicle transformation was estimated using the median of the fifth
+percentiles of the negative values across all samples.
+
+Staining via ICS enables dection of rare antigen-specific T-cell responses that
+are not measurable on the cell surface and can be measured without \emph{in
+  vitro} expansion \citep{Nomura:2008db} After ICS was introduced, a single
+cytokine was often measured as a surrogate for a T-cell response
+\cite{Lugli:2010ki}. \cite{Harari:2005tp}, however, showed that T-cell responses
+are heterogeneous and can be a function of multiple cytokines being
+simultaneously produced by cells. \cite{DeRosa:2004wp} have shown that T-cell
+responses to immunization are too complex to be measured in terms of a single
+cytokine. Instead, multiple subsets of so-called polyfunctional cells should be
+quantified to measure immunogenicity of a vaccine or of immune responses to
+pathogenesis
+
+Here, we utilize polyfunctional gates in order to discriminate vaccine
+response. Our goal is to discriminate accurately the vaccination status of the
+patient cohorts as well as to identify the antigen-specific T-cells responding
+to the vaccine. In contrast, according to \cite{Goepfert:2011ci}, in the HVTN
+065 clinical trial vaccine response was determined in terms of those samples
+shown to IFN$\gamma$ or IL2 after background subtraction following
+stimulation. Hence, we also compare directly the classification of vaccination
+status of patients by using IFN$\gamma$ or IL2 alone.
+
+
+\subsection{Automated Gating Hierarchy}
+
+Following \cite{Goepfert:2011ci}, we aimed to identify CD4+ and CD8+ T-cell
+responses by applying a hierarchical gating strategy ultimately to gate the
+three cytokines, TNF$\alpha$, IFN$\gamma$, and IL2. We present the gating
+hierarchy applied by OpenCyto in Figure \ref{fig:HVTN065-gating-hierarchy}. We
+applied standard data filtering to the HVTN 065 data set by first removing
+boundary scatter, debris, doublets, and dead cells.
+
+Our goal is to examine the efficacy of OpenCyto's automated gating of the
+cytokines compared with those of the manual gating. Additionally, we were
+interested in the polyfunctionality.
+
+\subsection{Comparison of Automated and Manual Gates}
+
+In Figure \ref{fig:HVTN065-upstream-gates} we display upstream gates for a
+single patient.
+
+Here, we compare the gates constructed automatically by OpenCyto with the
+manually defined gates.
+
+\subsection{Classification Study}
+
+For each T-cell subset CD4 and CD8, we extracted the eight Boolean subsets of
+the three cytokines of interest (i.e., TNF$\alpha$, IFN$\gamma$, and IL2) with
+associated proportions as multivariate features vectors. We explicity ignored
+TNF$\alpha$-IFN$\gamma$-IL2- because it is redundant given the other seven
+features. Our goal was to classify the vaccination status of the patient cohorts
+from the proportions of the polyfunctional populations of the three cytokines of
+interest.  Additionally, we aimed to identify antigen-specific T-cells
+responding to the vaccine.
+
+Here, we describe our classification study. First, we partition the HVTN065
+patients by their treatment status into a treatment group and placebo group. Of
+the patients in the treatment group, we randomly partition 60\% of the patients
+into a training data set and the remaining 40\% of the patients into a test data
+set.  We utilize the \textbf{glmnet} package using the elastic net with $\alpha
+= 0.5$ to build a classifier from the population proportions for the markers and
+the polyfunctional gates obtained using the OpenCyto package. Next, because
+there are two visits (i.e., pre- and post-vaccine) for each patient, we pair the
+visits in the test data set by patient. For each patient-visit pairing, we
+classify the two samples and calculate the difference in their classification
+probabilities. Let $d$ = Pr(sample 1 from subject 1 = post-vaccine) - Pr(sample
+2 from subject 1 = post-vaccine).  For a given probability threshold $\delta$,
+we classify sample 1 as post-vaccine and sample 2 as pre-vaccine if $d >
+\delta$. Otherwise, if $d \le \delta$, we classify sample 1 as pre-vaccine and
+sample 2 as post-vaccine. We calculate the classification accuracy as the number
+of correctly classified patients. In the same manner we calculate the
+classification accuracy using the placebo patients as a separate test data set.
+
+We selected relevant features using a LASSO-based elastic-net classifier.
+Specifically, we used the \textbf{glmnet} R package \cite{Friedman:2010wm},
+which employs variable selection via $L_1$ regularization. The shrinkage
+parameter was selected via 10-fold cross-validation \citep{Hastie:2008dt}. We
+then ranked the variables selected by $p$-values obtained from the
+\textbf{covTest} R package. In Table \ref{tab:markers-covTest} we see that only
+4 markers have $p$-values below the usual 5\% significance level. Of the four
+markers, the three polyfunctional markers having the smallest $p$-values are
+CD4+, while the fourth is CD8+.
+
+% *TODO*: We should say that 1 stimulation group induces the following subset of
+% features (TODO), while another stimulation group induces the following subset
+% of features (TODO).
+
+Next, we calculate ROC curves assuming all vaccinees are true positive and the
+placebos are false positive. For each PTID, we compute the absolute value of the
+difference in classification probabilties for visits 2 and 12 and then order by
+the differences.
+
+\subsection{Classification with IFN$\gamma$+ $|$ IL2+}
+
+Here, we compare the automated gates constructed using OpenCyto with the
+manually constructed gates. For both cases, we apply logistic regression to
+classify patient visits utilizing a single feature, namely IFN$\gamma$+ $|$ IL2+.
+
+
+<<classification_paired>>=
+# Computes the paired classification results.  The classification accuracies
+# computed use a probability threshold of 0 (i.e., d = 0).
+# The value of 'alpha = 0.5' is passed to 'glmnet' to indicate the usage of
+# elastic net.
+set.seed(42)
+GAG_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "GAG-1-PTEG", alpha = 0.5)
+ENV_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "ENV-1-PTEG", alpha = 0.5)
+POL_results <- lapply(popstats_polyfunc, classification_summary,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "POL-1-PTEG", alpha = 0.5)
+
+# Constructs a ggplot2-friendly results data frame
+GAG_accuracy <- melt(lapply(GAG_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+ENV_accuracy <- melt(lapply(ENV_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+POL_accuracy <- melt(lapply(POL_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+
+accuracy_results <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_accuracy),
+                          cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy),
+                          cbind(Stimulation = "POL-1-PTEG", POL_accuracy))
+colnames(accuracy_results) <- c("Stimulation", "Treatment", "Accuracy", "Tolerance")
+@ 
+
+<<covTest_setup, message=FALSE>>=
+GAG_data <- rbind(GAG_results[["1e-4"]]$train_data, GAG_results[["1e-4"]]$test_data$treated)
+GAG_data <- subset(GAG_data, select = -PTID)
+
+GAG_x <- as.matrix(subset(GAG_data, select = -VISITNO))
+GAG_y <- GAG_data$VISITNO
+
+GAG_y <- as.integer(GAG_y == 12)
+
+lars_out <- lars.glm(x = GAG_x, y = GAG_y, family = "binomial")
+covTest_out <- covTest(lars_out, GAG_x, GAG_y)
+@ 
+
+<<ROC>>=
+# Next, we calculate ROC curves assuming all vaccinees are true positive and
+# the placebos are false positive.
+# For each PTID, we compute the absolute value of the difference in
+# classification probabilties for visits 2 and 12 and then order by the
+# differences.
+
+# Summarizes the classification probabilties for GAG and ENV.
+GAG_ROC <- ROC_summary(GAG_results, cytokine_tolerances)
+ENV_ROC <- ROC_summary(ENV_results, cytokine_tolerances)
+POL_ROC <- ROC_summary(POL_results, cytokine_tolerances)
+
+# Estimates ROC curves for GAG and ENV
+ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC),
+                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC),
+                    cbind(Stimulation = "POL-1-PTEG", POL_ROC))
+@ 
+
+<<markers_selected>>=
+# Here, we provide the markers that were selected by 'glmnet' for each
+# stimulation group. In the case that `(Intercept)` is given, no markers are
+# selected by `glmnet`, leaving only an intercept term.
+# markers_selected
+GAG_markers <- lapply(GAG_results, function(x) x$markers)
+num_markers <- max(sapply(GAG_markers, length))
+GAG_markers <- do.call(cbind, lapply(GAG_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+GAG_markers <- data.frame(GAG_markers, check.names = FALSE)
+
+ENV_markers <- lapply(ENV_results, function(x) x$markers)
+num_markers <- max(sapply(ENV_markers, length))
+ENV_markers <- do.call(cbind, lapply(ENV_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+ENV_markers <- data.frame(ENV_markers, check.names = FALSE)
+
+POL_markers <- lapply(POL_results, function(x) x$markers)
+num_markers <- max(sapply(POL_markers, length))
+POL_markers <- do.call(cbind, lapply(POL_markers, function(x) {
+  length(x) <- num_markers
+  x
+}))
+POL_markers <- data.frame(POL_markers, check.names = FALSE)
+@ 
+
+
+\[ \left[\text{Figure \ref{fig:HVTN065-classification-accuracy} goes about here} \right] \]
+
+\[ \left[\text{Figure \ref{fig:HVTN065-ROC-curves} goes about here } \right] \]
+
+Here, we provide the markers that were selected by \textbf{glmnet} for each
+stimulation group.
+
+<<classification_positivity_opencyto>>=
+popstats_positivity <- popstats_cleaned[grepl("IL2\\+\\|IFNg\\+", rownames(popstats_cleaned)), ]
+popstats_positivity <- partition_popstats(popstats_positivity,
+                                         tolerances = cytokine_tolerances)
+set.seed(42)
+GAG_results <- lapply(popstats_positivity, classification_summary_logistic,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "GAG-1-PTEG")
+ENV_results <- lapply(popstats_positivity, classification_summary_logistic,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "ENV-1-PTEG")
+POL_results <- lapply(popstats_positivity, classification_summary_logistic,
+                        treatment_info = treatment_info, pdata = pData_HVTN065,
+                        stimulation = "POL-1-PTEG")
+
+# Constructs a ggplot2-friendly results data frame
+GAG_accuracy <- melt(lapply(GAG_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+ENV_accuracy <- melt(lapply(ENV_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+POL_accuracy <- melt(lapply(POL_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+accuracy_results <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_accuracy),
+                          cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy),
+                          cbind(Stimulation = "POL-1-PTEG", POL_accuracy))
+colnames(accuracy_results) <- c("Stimulation", "Treatment", "Accuracy", "Tolerance")
+@
+
+<<ROC_positivity>>=
+# Summarizes the classification probabilties for GAG and ENV.
+GAG_ROC <- ROC_summary(GAG_results, cytokine_tolerances)
+ENV_ROC <- ROC_summary(ENV_results, cytokine_tolerances)
+POL_ROC <- ROC_summary(POL_results, cytokine_tolerances)
+
+# Estimates ROC curves for GAG and ENV
+ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC),
+                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC),
+                    cbind(Stimulation = "POL-1-PTEG", POL_ROC))
+@ 
+
+\[ \left[\text{Figure \ref{fig:HVTN065-classification-accuracy-positivity-automated} goes about here }\right] \]
+
+\[ \left[\text{Figure \ref{fig:HVTN065-ROC-curves-positivity-automated} goes about here }\right] \]
+
+\[ \left[\text{Figure \ref{fig:HVTN065-classification-accuracy-positivity-manual} goes about here }\right] \]
+
+\[ \left[\text{Figure \ref{fig:HVTN065-ROC-curves-positivity-manual} goes about here }\right] \]
+
+<<classification_positivity_manual>>=
+manual_GAG_results <- classification_summary_logistic(HVTN065_manual,
+                                                      treatment_info = treatment_info,
+                                                      pdata = pData_HVTN065,
+                                                      stimulation = "GAG-1-PTEG",
+                                                      manual_gates = TRUE)
+manual_ENV_results <- classification_summary_logistic(HVTN065_manual,
+                                                      treatment_info = treatment_info,
+                                                      pdata = pData_HVTN065,
+                                                      stimulation = "ENV-1-PTEG",
+                                                      manual_gates = TRUE)
+
+# Constructs a ggplot2-friendly results data frame
+GAG_manual_accuracy <- cbind.data.frame(Stimulation = "GAG-1-PTEG",
+                                        rbind(unlist(manual_GAG_results$accuracy)))
+ENV_manual_accuracy <- cbind.data.frame(Stimulation = "ENV-1-PTEG",
+                                        rbind(unlist(manual_ENV_results$accuracy)))
+
+manual_accuracy_results <- melt(rbind(GAG_manual_accuracy, ENV_manual_accuracy))
+colnames(manual_accuracy_results) <- c("Stimulation", "Treatment", "Accuracy")
+
+manual_accuracy_results$Treatment <- factor(as.character(manual_accuracy_results$Treatment),
+                                            labels = c("placebo", "treatment"))
+@ 
+
+<<ROC_positivity_manual>>=
+# Summarizes the classification probabilties for GAG and ENV.
+GAG_ROC_manual <- ROC_summary_manual(manual_GAG_results)
+ENV_ROC_manual <- ROC_summary_manual(manual_ENV_results)
+
+# Estimates ROC curves for GAG and ENV
+ROC_curves_manual <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC_manual),
+                           cbind(Stimulation = "ENV-1-PTEG", ENV_ROC_manual))
+@ 
+
+\subsection{MIMOSA Stuff}
+
+From \cite{Goepfert:2011ci}:
+
+Positive responses were identified using the 1-sided Fisher exact test to
+support comparison of differences between background measurements and the
+numbers of CD4+ or CD8+ T cells producing IFN$\gamma$ and/or IL2 in response to
+peptide stimulation.
+
+
+\begin{itemize}
+  \item Discuss the features selected by \textbf{glmnet}
+  \item Table 1: Response rates by treatment group for each data set (manual and automated).
+  \item Greg mentioned that we should include boxplots of the proportions (the
+    reps are the subjects) and stratify by cohorts. This information is
+    available for HVTN065 in the ./data/*.csv file (I think). Then facet by the
+    markers (features selected?).
+\end{itemize}
+
+\section{Discussion}
+
+\bibliographystyle{plainnat}
+\bibliography{opencyto}
+
+\clearpage
+
+\begin{figure}
+\begin{center}
+\includegraphics[width=0.8\linewidth]{gating-hierarchy}
+\end{center}
+\caption{Gating hierarchy applied to the HVTN 065 data set using OpenCyto.}
+\label{fig:HVTN065-gating-hierarchy}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+\includegraphics[width=\linewidth]{gates-upstream}
+\caption{Upstream gates obtained automatically with OpenCyto for a single patient.}
+\label{fig:HVTN065-upstream-gates}
+\end{figure}
+
+\clearpage
+
+<<automated_polyfunctional_proportions, results='asis'>>=
+# Proportions from polyfunctional gates for the *best* tolerance value applied
+# to automated gates
+# TODO: This tolerance value should be selected automatically in case we make
+# changes later on
+proportions_polyfunc <- popstats_polyfunc[["1e-4"]]
+proportions_polyfunc <- melt(proportions_polyfunc, varnames = c("Marker", "Sample"))
+
+# Merges with the pData to collect the phenotypic data for the proportions
+proportions_polyfunc <- merge(pData_HVTN065, proportions_polyfunc)
+proportions_polyfunc$VISITNO <- factor(proportions_polyfunc$VISITNO, labels = c("2", "12"))
+proportions_polyfunc$Marker <- gsub("cd", "CD", proportions_polyfunc$Marker)
+proportions_polyfunc$Stimulation <- replace(proportions_polyfunc$Stimulation,
+                                            grep("^negctrl", proportions_polyfunc$Stimulation), "negctrl")
+cd4_polyfunc <- proportions_polyfunc[grep("^CD4", proportions_polyfunc$Marker), ]
+cd8_polyfunc <- proportions_polyfunc[grep("^CD8", proportions_polyfunc$Marker), ]
+
+cd4_cv <- ddply(cd4_polyfunc, .(Stimulation, VISITNO, Marker), summarize, CV = sd(value) / mean(value))
+cd8_cv <- ddply(cd8_polyfunc, .(Stimulation, VISITNO, Marker), summarize, CV = sd(value) / mean(value))
+
+@ 
+
+\begin{figure}
+<<cd4_polyfunctional_proportions, results='asis'>>=
+p <- ggplot(cd4_polyfunc, aes(x = VISITNO, y = value))
+p <- p + geom_boxplot(aes(fill = Stimulation)) + theme_bw()
+p + xlab("Patient Visit Number") + ylab("Proportion") + facet_wrap(~ Marker, scale = "free_y", ncol = 2) + scale_y_log10()
+@ 
+\caption{Proportions for each CD4 polyfunctional marker from gates automatically
+  constructed by OpenCyto.}
+\label{fig:HVTN065-automated-CD4-polyfunctional-proportions}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+<<cd8_polyfunctional_proportions, results='asis'>>=
+p <- ggplot(cd8_polyfunc, aes(x = VISITNO, y = value))
+p <- p + geom_boxplot(aes(fill = Stimulation)) + theme_bw()
+p + xlab("Patient Visit Number") + ylab("Proportion") + facet_wrap(~ Marker, scale = "free_y", ncol = 2) + scale_y_log10()
+@ 
+\caption{Proportions for each CD8 polyfunctional marker from gates automatically
+  constructed by OpenCyto.}
+\label{fig:HVTN065-automated-CD8-polyfunctional-proportions}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+<<cd4_polyfunctional_cv, results='asis'>>=
+p <- ggplot(cd4_cv, aes(x = VISITNO, weight = CV, fill = Stimulation))
+p <- p + geom_bar(position = "dodge") + theme_bw()
+p <- p + xlab("Patient Visit Number") + ylab("Coefficient of Variation")
+p + facet_wrap(~ Marker, scale = "free_y", ncol = 2)
+@ 
+\caption{Coefficients of variation for each CD4 polyfunctional marker from gates
+  automatically constructed by OpenCyto.}
+\label{fig:HVTN065-automated-CD4-polyfunctional-cv}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+<<cd8_polyfunctional_cv, results='asis'>>=
+p <- ggplot(cd8_cv, aes(x = VISITNO, weight = CV, fill = Stimulation))
+p <- p + geom_bar(position = "dodge") + theme_bw()
+p <- p + xlab("Patient Visit Number") + ylab("Coefficient of Variation")
+p + facet_wrap(~ Marker, scale = "free_y", ncol = 2)
+@ 
+\caption{Coefficients of variation for each CD8 polyfunctional marker from gates
+  automatically constructed by OpenCyto.}
+\label{fig:HVTN065-automated-CD8-polyfunctional-cv}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+<<manual_proportions, results='asis'>>=
+melt_HVTN065_manual <- melt(HVTN065_manual, variable_name = "Marker")
+melt_HVTN065_manual$Marker <- gsub("cd", "CD", melt_HVTN065_manual$Marker)
+
+p <- ggplot(melt_HVTN065_manual, aes(x = VISITNO, y = value))
+p <- p + geom_boxplot(aes(fill = Stimulation)) + theme_bw()
+p + xlab("Patient Visit Number") + ylab("Proportion") + facet_wrap(~ Marker, scale = "free_y")
+@ 
+\caption{Proportions of IFN$\gamma$+ $|$ IL2+ cells from manually constructed gates.}
+\label{fig:HVTN065-manual-positivity-proportions}
+\end{figure}
+
+\clearpage
+
+
+\begin{figure}
+<<classification_paired_figure, results='asis'>>=
+p <- ggplot(accuracy_results, aes(x = Stimulation, fill = Treatment))
+p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + ylim(0, 1) + xlab("Stimulation Cohort") + ylab("Classification Accuracy")
+p <- p + theme_bw()
+p <- p + theme(strip.text.y = element_text(size = 14))
+p <- p + theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.9, size = 11))
+p <- p + theme(axis.title = element_text(size = 16))
+p + scale_fill_discrete(name  = "Treatment\nGroup", labels = c("Placebo", "Treatment"))
+@
+\caption{Classification accuracy of visit numbers for each patient cohort paired
+  and for each stimulation cohort based on the polyfunctional cytokine gates
+  obtained automatically from OpenCyto.}
+\label{fig:HVTN065-classification-accuracy}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+<<ROC_figure, results='asis'>>=
+
+# The 'pracma:::trapz' function numerically integrates via the trapezoid method
+AUC_df <- ddply(ROC_curves, .(Stimulation, Tolerance), summarize,
+                AUC = trapz(FPR, TPR))
+AUC_df$AUC <- paste("AUC:", round(AUC_df$AUC, 3))
+AUC_df$x <- 0.75
+AUC_df$y <- rep(c(0.55, 0.5, 0.45), each = length(cytokine_tolerances))
+
+# Creates a single plot containing ROC curves for both stimulation cohorts.
+# Also, displays AUC's as text on plot.
+p <- ggplot(ROC_curves, aes(x = FPR, y = TPR))
+p <- p + geom_line(aes(color = Stimulation), size = 1.5)
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + geom_text(data = AUC_df, aes(label = AUC, x = x, y = y, color = Stimulation))
+p <- p + theme_bw()
+p <- p + theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.9, size = 10))
+p <- p + scale_colour_discrete(name  = "Stimulation\nCohort")
+p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)")
+@ 
+\caption{ROC curves by stimulation cohort based on classification of visit
+  numbers for each patient cohort paired based on the polyfunctional cytokine
+  gates obtained automatically from OpenCyto.}
+\label{fig:HVTN065-ROC-curves}
+\end{figure}
+
+\clearpage
+
+<<markers_covTest, results='asis', message = FALSE>>=
+# Circumvents bug in covTEst where Predictor Number can be negatives. This results in an NA p-value
+covTest_results <- data.frame(na.omit(covTest_out$results))
+
+# Orders the results by increasing p-value
+covTest_results <- covTest_results[order(covTest_results$P.value), ]
+
+covTest_results <- data.frame(Marker = colnames(GAG_x)[covTest_results$Predictor_Number],
+                         `P-value` = covTest_results$P.value)
+
+print(xtable(covTest_results), include.rownames = FALSE)
+@ 
+
+\clearpage
+
+<<markers_GAG, results='asis'>>=
+print(xtable(GAG_markers, caption = "Markers selected via LASSO for GAG stimulation group"), include.rownames = FALSE)
+@ 
+
+\clearpage
+
+<<markers_ENV, results='asis'>>=
+print(xtable(ENV_markers, caption = "Markers selected via LASSO for ENV stimulation group"), include.rownames = FALSE)
+@ 
+
+\clearpage
+
+<<markers_POL, results='asis'>>=
+print(xtable(POL_markers, caption = "Markers selected via LASSO for POL stimulation group"), include.rownames = FALSE)
+@ 
+
+\clearpage
+
+\begin{figure}
+<<classification_positivity_figure, results='asis'>>=
+p <- ggplot(accuracy_results, aes(x = Stimulation, fill = Treatment))
+p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + ylim(0, 1) + xlab("Stimulation Cohort") + ylab("Classification Accuracy")
+p <- p + theme_bw()
+p <- p + theme(strip.text.y = element_text(size = 14))
+p <- p + theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.9, size = 11))
+p <- p + theme(axis.title = element_text(size = 16))
+p + scale_fill_discrete(name  = "Treatment\nGroup", labels = c("Placebo", "Treatment"))
+@ 
+\caption{Classification accuracy of visit numbers for each patient cohort paired
+  and for each stimulation cohort based on the IFN$\gamma$+ $|$ IL2+ gate obtained
+  automatically from OpenCyto. TODO: Append variable names with
+  \textbf{positivity} for caching purposes}
+\label{fig:HVTN065-classification-accuracy-positivity-automated}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+<<ROC_positivity_figure, results='asis'>>=
+# The 'pracma:::trapz' function numerically integrates via the trapezoid method
+AUC_df <- ddply(ROC_curves, .(Stimulation, Tolerance), summarize,
+                AUC = trapz(FPR, TPR))
+AUC_df$AUC <- paste("AUC:", round(AUC_df$AUC, 3))
+AUC_df$x <- 0.5
+AUC_df$y <- rep(c(0.55, 0.5, 0.45), each = length(cytokine_tolerances))
+
+# Creates a single plot containing ROC curves for both stimulation cohorts.
+# Also, displays AUC's as text on plot.
+p <- ggplot(ROC_curves, aes(x = FPR, y = TPR))
+p <- p + geom_line(aes(color = Stimulation), size = 1.5)
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + geom_text(data = AUC_df, aes(label = AUC, x = x, y = y, color = Stimulation))
+p <- p + scale_colour_discrete(name  = "Stimulation\nCohort")
+p <- p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)") + theme_bw()
+p + theme(axis.text.x = element_text(angle = 45, hjust = 0.9, vjust = 0.9, size = 10))
+@
+\caption{ROC curves by stimulation cohort based on classification of visit
+  numbers for each patient cohort paired based on the IFN$\gamma$+ $|$ IL2+ gate obtained
+  automatically from OpenCyto. TODO: Append variable names with
+  \textbf{positivity} for caching purposes }
+\label{fig:HVTN065-ROC-curves-positivity-automated}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+<<classification_positivity_manual_figure, results='asis'>>=
+p <- ggplot(manual_accuracy_results, aes(x = Stimulation, fill = Treatment))
+p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
+p <- p + ylim(0, 1) + xlab("Stimulation Cohort") + ylab("Classification Accuracy")
+p <- p + theme_bw() + theme(strip.text.y = element_text(size = 14))
+p <- p + theme(axis.text.x = element_text(size = 11))
+p <- p + theme(axis.title = element_text(size = 16))
+p + scale_fill_discrete(name  = "Treatment\nGroup", labels = c("Placebo", "Treatment"))
+@ 
+\caption{Classification accuracy of visit numbers for each patient cohort paired
+  and for each stimulation cohort based on the IFN$\gamma$+ $|$ IL2+ gate obtained
+  manually.}
+\label{fig:HVTN065-classification-accuracy-positivity-manual}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+<<ROC_positivity_manual_figure, results='asis'>>=
+# The 'pracma:::trapz' function numerically integrates via the trapezoid method
+AUC_df_manual <- ddply(ROC_curves_manual, .(Stimulation), summarize, AUC = trapz(FPR, TPR))
+AUC_df_manual$AUC <- paste("AUC:", round(AUC_df_manual$AUC, 3))
+AUC_df_manual$x <- 0.5
+AUC_df_manual$y <- replace(rep(0.5, nrow(AUC_df_manual)), AUC_df_manual$Stimulation == "GAG-1-PTEG", 0.55)
+
+# Creates a single plot containing ROC curves for both stimulation cohorts.
+# Also, displays AUC's as text on plot.
+p <- ggplot(ROC_curves_manual, aes(x = FPR, y = TPR))
+p <- p + geom_line(aes(color = Stimulation), size = 1.5)
+p <- p + geom_text(data = AUC_df_manual, aes(label = AUC, x = x, y = y, color = Stimulation))
+p <- p + scale_colour_discrete(name  = "Stimulation\nCohort")
+p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)") + theme_bw()
+@
+\caption{ROC curves by stimulation cohort based on classification of visit
+  numbers for each patient cohort paired based on the IFN$\gamma$+ $|$ IL2+ gate
+  obtained manually.}
+\label{fig:HVTN065-ROC-curves-positivity-manual}
+\end{figure}
+
+
+\end{document}

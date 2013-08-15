@@ -15,7 +15,8 @@
 #' row names
 pretty_popstats <- function(popstats) {
   # Remove all population statistics for the following markers
-  markers_remove <- c("root", "cd8gate_pos", "cd4_neg", "cd8gate_neg", "cd4_pos")
+  markers_remove <- c("root", "burnin", "boundary", "debris", "cd8gate_neg",
+                      "cd8gate_pos", "cd4-",  "cd4+", "singlet", "viable", "lymph")
   popstats_remove <- sapply(strsplit(rownames(popstats), "/"), tail, n = 1)
   popstats_remove <- popstats_remove %in% markers_remove
   popstats <- popstats[!popstats_remove, ]
@@ -23,7 +24,7 @@ pretty_popstats <- function(popstats) {
   rownames_popstats <- rownames(popstats)
 
   # Updates any markers with a tolerance value to something easier to parse.
-  # Example: "cd4:TNFa_tol1&cd4:IFNg_tol1&cd4:IL2_tol1" => "cd4:TNFa&cd4:IFNg&cd4:IL2_tol_1e-1"
+  # Example: "cd4:TNFa_tol1&cd4:IFNg_tol1&cd4:IL2_tol1" => "cd4:TNFa&cd4:IFNg&cd4:IL2_1e-1"
   which_tol <- grep("tol", rownames_popstats)
   tol_append <- sapply(strsplit(rownames_popstats[which_tol], "_tol"), tail, n = 1)
   rownames_popstats[which_tol] <- gsub("_tol.", "", rownames_popstats[which_tol])
@@ -154,9 +155,6 @@ prepare_manual <- function(popstats, treatment_info, pdata,
   list(train_data = train_data, test_data = test_data, placebo_data = placebo_data)
 }
 
-
-
-
 #' Prepare population statistics data for classification study
 #'
 #'
@@ -165,15 +163,22 @@ prepare_manual <- function(popstats, treatment_info, pdata,
 #' @param treatment_info a data.frame containing a lookup of \code{PTID} and
 #' placebo/treatment information
 #' @param pdata an object returned from \code{pData} from the \code{GatingSet}
+#' @param other_features a data.frame of additional features to add. By default,
+#' no additional features are used.
 #' @param stimulation the stimulation group
 #' @param train_pct a numeric value determining the percentage of treated
 #' patients used as training data and the remaining patients as test data
 #' @return list containing the various data to use in a classification study
-prepare_classification <- function(popstats, treatment_info, pdata,
+prepare_classification <- function(popstats, treatment_info, pdata, other_features = NULL,
                                    stimulation = "GAG-1-PTEG", train_pct = 0.6) {
   m_popstats <- reshape2:::melt(popstats)
-  colnames(m_popstats) <- c("Marker", "Sample", "Proportion")
+  colnames(m_popstats) <- c("Marker", "Sample", "Value")
   m_popstats$Marker <- as.character(m_popstats$Marker)
+  m_popstats$Sample <- as.character(m_popstats$Sample)
+
+  if (!is.null(other_features)) {
+    m_popstats <- rbind(m_popstats, other_features)
+  }
 
   m_popstats <- plyr:::join(m_popstats, pdata, by = "Sample")
   m_popstats$VISITNO <- factor(m_popstats$VISITNO)
@@ -194,16 +199,16 @@ prepare_classification <- function(popstats, treatment_info, pdata,
   # Effectively, this averages the two negative-control proportions for each
   # marker.
   m_popstats <- ddply(m_popstats, .(PTID, VISITNO, Stimulation, Marker),
-                      summarize, Proportion = mean(Proportion))
+                      summarize, Value = mean(Value))
 
   # Next, we normalize the population proportions for the stimulated samples to
   # adjust for the background (negative controls) by calculating the difference of
   # the proportions for the stimulated samples and the negative controls.
   m_popstats <- ddply(m_popstats, .(PTID, VISITNO, Marker), summarize,
-                    diff_Proportion = diff(Proportion))
+                    diff_Value = diff(Value))
 
   # Converts the melted data.frame to a wider format to continue the classification study.
-  m_popstats <- dcast(m_popstats, PTID + VISITNO ~ Marker, value.var = "diff_Proportion")
+  m_popstats <- dcast(m_popstats, PTID + VISITNO ~ Marker, value.var = "diff_Value")
   m_popstats <- plyr:::join(m_popstats, treatment_info)
   m_popstats$PTID <- as.character(m_popstats$PTID)
 
@@ -258,14 +263,17 @@ prepare_classification <- function(popstats, treatment_info, pdata,
 #' classification probabilities for two samples from the same subject indicates
 #' that the first sample is classified as post-vaccine. Ignored if \code{paired}
 #' is \code{FALSE}. See details.
+#' @param other_features a data.frame of additional features to add. By default,
+#' no additional features are used. Passed to \code{\link{prepare_classification}}.
 #' @param ... Additional arguments passed to \code{\link{glmnet}}.
 #' @return list containing classification results
 classification_summary <- function(popstats, treatment_info, pdata,
                                    stimulation = "GAG-1-PTEG", train_pct = 0.6,
-                                   prob_threshold = 0, ...) {
+                                   prob_threshold = 0, other_features = NULL, ...) {
   
   classif_data <- prepare_classification(popstats = popstats,
                                          treatment_info = treatment_info, pdata = pdata,
+                                         other_features = other_features,
                                          stimulation = stimulation, train_pct = train_pct)
 
   train_data <- classif_data$train_data
@@ -283,6 +291,7 @@ classification_summary <- function(popstats, treatment_info, pdata,
 
   # Trains the 'glmnet' classifier using cross-validation.
   glmnet_cv <- cv.glmnet(x = train_x, y = train_y, family = "binomial", ...)
+  glmnet_fit <- glmnet(x = train_x, y = train_y, family = "binomial", ...)
 
   # Computes classification accuracies in two different ways. If the visits are
   # paired by patient, then we compute the proportion of correctly classified
@@ -320,7 +329,7 @@ classification_summary <- function(popstats, treatment_info, pdata,
   # If present, we manually remove the "(Intercept)"
   # In the case that all markers are removed and only the intercept remains, we
   # add the "(Intercept)" back, for clarity.
-  coef_glmnet <- coef(glmnet_cv)
+  coef_glmnet <- coef(glmnet_fit, s = glmnet_cv$lambda.min)
   markers_kept <- rownames(coef_glmnet)[as.vector(coef_glmnet) != 0]
   markers_kept <- markers_kept[!grepl("(Intercept)", markers_kept)]
   if (length(markers_kept) == 0) {
@@ -333,7 +342,7 @@ classification_summary <- function(popstats, treatment_info, pdata,
   list(accuracy = list(treatment = accuracy_treated, placebo = accuracy_placebo),
        classification_probs = list(treated = predictions_treated,
          placebo = predictions_placebo),
-       markers = markers_kept, coef_glmnet = coef_glmnet,
+       markers = markers_kept, coef_glmnet = coef_glmnet, train_data = train_data,
        test_data = list(treated = test_data, placebo = placebo_data))
 }
 

@@ -21,7 +21,7 @@ antigens <- c("ENV-1-PTEG", "GAG-1-PTEG")
 manual_data$VISITNO <- as.character(manual_data$visitno)
 manual_data$PTID <- gsub("-", "", as.character(manual_data$ptid))
 manual_data$Stimulation <- as.character(manual_data$antigen)
-manual_data <- subset(manual_data, PTID %in% levels(pData_HVTN065$PTID))
+manual_data <- subset(manual_data, PTID %in% as.character(unique(pData_HVTN065$PTID)))
 
 manual_data$Marker <- sapply(strsplit(as.character(manual_data$tcellsub), "/"), tail, n = 1)
 manual_data$Marker <- gsub("\\+", "", manual_data$Marker)
@@ -40,12 +40,12 @@ HVTN065_manual <- ddply(manual_data, .(PTID, VISITNO, Stimulation), function(x) 
   VISITNO <- x$VISITNO[1]
 
   # First, we obtain the percentages for the stimulation group.
-  stimulated_pct <- x$pctpos
+  stimulated_pct <- with(x, cytnum / nsub)
   names(stimulated_pct) <- x$Marker
 
   # In the same row of 'manual_data' the negative-control percentages are also
   # given. We extract those here.
-  negctrl_pct <- x$pctpos_neg
+  negctrl_pct <- with(x, cytnum_neg / nsub_neg)
   names(negctrl_pct) <- x$Marker
 
   proportions <- data.frame(PTID, VISITNO, Stimulation = c(Stimulation, "negctrl"),
@@ -56,5 +56,24 @@ HVTN065_manual <- ddply(manual_data, .(PTID, VISITNO, Stimulation), function(x) 
   proportions
 })
 
+# Because the negative controls are repeated twice given our construct above, we
+# average the proportions within PTID, VISITNO, and Stimulation group.
+HVTN065_manual <- ddply(HVTN065_manual, .(PTID, VISITNO, Stimulation), summarize,
+                        `cd4:IL2+|IFNg+` = mean(`cd4:IL2+|IFNg+`),
+                        `cd8:IL2+|IFNg+` = mean(`cd8:IL2+|IFNg+`))
+
+# Ensures that 2 precedes 12 in the factor level ordering for VISITNO
+HVTN065_manual$VISITNO <- relevel(HVTN065_manual$VISITNO, "2")
+
+# Relevels Stimulation group so that 'negctrl' appears first because it is the
+# baseline level.
+HVTN065_manual$Stimulation <- relevel(HVTN065_manual$Stimulation, "negctrl")
+
 save(HVTN065_manual, file = "cache/HVTN065-manual-proportions.RData")
 
+# NOTE: It is not clear to me how to compute proportions for upstream gates if
+# we wish to do this.  In the 'manual_data' data.frame above, each row gives
+# both the counts and proportions for the cytokines for both the stimulated
+# sample and negative control. However, each row has only one of each upstream
+# gate, so it is not clear if this should correspond to stimulation or negative
+# control.

@@ -21,6 +21,162 @@ quote. Also, see Nomura et al. (2008) below.
   using cell surface markers or with MHC multimers to detect an antigen specific
   response, making it an extremely flexible and versatile method.
 
+## HVTN 065 Data Set
+
+A paper on the HIV Vaccine Trials Network (HVTN) 065 data set was published by
+Goepfert et al. (2011). The goal here is to summarize the relevant information
+from the paper to incorporate into the OpenCyto paper.
+
+Some terminology in terms of previous efficacy clinical trials:
+
+> The next vaccine to complete an efficacy trial was MRKAD5, a trivalent
+  adenovirus 5 (Ad5) vectored vaccine. This vaccine encoded Gag, Pol, and Nef
+  and elicited HIVspecific CD8+ and CD4+ T cell responses in 75% and 41% of
+  participants, respectively [2], but also failed to protect [3]. The most
+  recent efficacy trial (RV144) tested 4 vaccinations of the vCP1521 canary pox
+  vector, which encoded Gag, protease, and Env, with AIDSVAX B/E added to the
+  last 2 vaccinations for a protein boost [4]. Although this combination vaccine
+  did not induce measurable CD8+ T cells, it did induce antibody and CD4+ T
+  cells and provided a 31% protection rate against infection.
+
+Brief description of the HVTN 065 Phase 1 clinical trial:
+
+> The National Institute of Allergy and Infectious Diseases HIV Vaccine Trials
+  Network (HVTN) conducted a Phase 1 evaluation of the safety and immunogenicity
+  of the pGA2/JS7 DNA and MVA/HIV62 vaccines in healthy, HIV-1 –seronegative
+  adults. MVA62, given alone or with a JS7 DNA priming series, was safe and well
+  tolerated, inducing T cell and antibody responses, which varied depending on
+  the vaccine regimen, dose, and dosing schedule.
+
+Study Design:
+
+> HVTN protocol 065 was a randomized, double-blind, placebo-controlled trial
+  conducted at 6 clinical sites in the United States (Figure 1B). Adults aged
+  18–49 years who were deemed healthy based on medical history, physical exam,
+  laboratory tests, troponin levels, and electrocardiogram (EKG) were enrolled.
+
+Immune Response Assays:
+
+> HIV-specific T cell responses were measured using intracellular cytokine
+  staining conducted at HVTN central laboratories [2, 14]. Global potential T
+  cell epitope [15] peptide pools representing HIV Env (3 pools), Gag (2 pools),
+  and Pol (3 pools) were used at the final concentration of 1 lg for each
+  peptide per milliliter. Cells were first stained with the Violet Live/Dead
+  Fixable Dead Cell Stain [16] and then fixed, permeabilized, and stained with
+  the following reagents: CD3-ECD, CD4-FITC, CD8-PerCP-Cy5.5, IFN-g-PE-Cy7,
+  IL-2-PE, TNF-a-Alexa 700, and IL-4-APC. Positive responses were identified
+  using the 1-sided Fisher exact test to support comparison of differences
+  between background measurements and the numbers of CD4+ or CD8+ T cells
+  producing IFN-g and/or IL-2 in response to peptide stimulation [14]. The
+  breadth and depth of T cell responses [17] were calculated by the number of
+  peptide pools eliciting a positive reaction per vaccinee (8 maximum).
+
+Participant information:
+
+> The median age of participants was 24 years, and 58% were female. The majority
+  were white (73%) or African American (16%). All 120 participants received
+  their initial vaccine, and 104 (87%) received all prescribed doses.
+
+HIV-1-specific T Cell Responses:
+
+> HIV-1–specific T cell responses were readily detected in all groups; however,
+  the response rates depended on the vaccine regimen (Figure 3). The DNA prime
+  enhanced both CD4 and CD8 response rates, with 2 DNA primes (either 1/10th or
+  full dose) being more effective than a single full-dose DNA prime.
+  Vaccine-induced CD4+ T cells were measured in 88% of individuals vaccinated
+  with the 1/10th-dose and 77% of those vaccinated with the full-dose DDMM
+  regimen. This compared to peak CD4+ response rates of 50% for DMM and 43% for
+  MMM regimens (Figure 3A). Peak CD8+ T cell responses were 33% in the
+  participants receiving 1/10th-dose and 42% in participants receiving the
+  full-dose DDMM regimens compared to 22% and 17% in participants in the DMM and
+  MMM regimens, respectively (Figure 3B). The magnitudes of responses were
+  overlapping for all groups, with medians between .07 and .17% of total CD4+ T
+  cells and between .06 and .65% of total CD8+ T cells (Figures 4 and 5A).
+
+> At 6 months following the final vaccination, CD4+ T cell response rates were
+  38% for DDMM (49% of their 2-week peak) compared with 8% for MMM (19% of their
+  2-week peak) ($P < .03$); and CD8+ T cell response rates were 38% for DDMM
+  (90% of their peak) compared with 4% for MMM (24% of their peak) (Figure
+  4). For the DDMM and MMM regimens, the functionality of T cell responses, as
+  measured by coproduction of IFN-g, IL-2, and TNF-a, were similar except for
+  different patterns for single-cytokine-producing cells (Figures 4C and
+  4D). Among the single-cytokine-producing CD4+ cells, IL-2 predominated in the
+  DDMM group and TNF-a, in the MMM group. Among single–cytokine-producing CD8+ T
+  cells, IFN-g production was most frequent in the DDMM group, whereas no single
+  cytokine dominated in the MMM group. For both regimens, approximately
+  one-third of the responding cells produced 3, 2, or 1 cytokine (Figures 4E and
+  4F).
+
+> The breadth and depth [17] of T cell responses against 2 Gag, 3 Env, and 3 Pol
+  peptide pools revealed responses primarily directed to Gag and Env (Figure
+  5A).
+
+> Responses for CD4+ and CD8+ T cells are for responses to Gag, Env, or Pol
+  measured as IFN-g– or IL-2–producing cells scored using intracellular cytokine
+  staining (ICS) following stimulation with potential T cell epitope peptide
+  pools.
+
+
+
+> The kinetics of T cell responses differed for Gag and Env: following the final
+  MVA dose, CD8+ T cell response rates for Gag increased 9-fold in the DDMM and
+  4-fold in the MMM group; whereas CD8+ responses for Env increased 2-fold for
+  DDMM recipients and decreased by 3-fold for MMM recipients. The DNA prime
+  biased the response toward CD4+ T cells. This bias was strongest after the
+  first MVA boost, when it ranged from a 7-fold to a 14- fold excess of CD4+
+  responses over CD8+ responses in the DNA-primed groups compared to a 2.4-fold
+  excess of CD4+ over CD8+ responses in the MMM group.
+
+HIV-1–specific Antibody Responses:
+
+> In contrast to T cell responses, HIV-1 –specific antibodies were induced more
+  frequently and at higher levels by the full-dose than the 1/10th-dose DDMM
+  regimen, and the highest frequencies and titers of Ab responses were induced
+  by the MMM regimen (Figures 3C and 6). After the final vaccine administration,
+  nearly all MMM recipients (96.6%) tested positive by the Abbott HIV-1/HIV-2
+  ELISA, whereas only 73% of the DDMM recipients had seroconverted by this test
+  ($P < .03$). A trend toward an increased number of positive Western blot
+  assays was also seen in the MMM (21.4%) versus the full-dose DDMM (4.3%)
+  recipients.
+
+> Env-specific antibodies, as measured by binding to an immunodominant Ab for a
+  gp120 monomer of the ADA vaccine Env (SP400 gp41 peptide), and neutralizing
+  activity for HIV1MN, were all highest in the MMM group (Figure 6).
+  Participants receiving the full-dose DDMM regimen had the lowest Ab responses,
+  and the DMM group had intermediate antibody responses. The higher titers of Ab
+  present in the MMM group were associated with this group receiving 3 doses of
+  MVA. Following 2 doses of MVA, Ab responses were overall similar in the DDMM
+  and DMM groups compared with those in the MMM group after 2 doses of MVA
+  (Figure 6).
+
+Vector-induced Immune Responses:
+
+> The CD4+ and CD8+ T cell responses specific to the MVA vector were assessed
+  following the MVA62 boosts. Subsequent to the first MVA boost, both the
+  response rates and magnitudes of vaccinia-specific CD4+ and CD8+ T cells were
+  significantly lower in those receiving the DNA prime compared with those
+  receiving only MVA62 ($P < .001$) (Figure 7).
+
+Discussion:
+
+> However, the DDMM regimen induced the highest frequency and most persistent
+  CD4+ and CD8+ T cell responses. The DNA prime also increased the breadth and
+  depth of the T cell responses and biased these responses toward CD4+ T
+  cells. On the other hand, the MMM regimen induced the highest frequency and
+  magnitude of antibody responses. The single DNA prime (DMM) induced
+  intermediate T cell and Ab responses. The 1/10th-dose DDMM regimen decreased
+  the height of Ab responses but had limited effect on T cell responses.
+
+> Thus T cell responses, below the level of detection by ex vivo analysis, were
+  able to focus T cells to HIV antigens expressed by MVA62. Moreover, the
+  absence of detectable DNA-elicited responses did not preclude the DNA prime
+  curtailing anti-MVA T cell responses. Presumably this effect was due to the
+  DNA prime establishing memory T cells recognizing HIV antigens that competed
+  for antigen presentation during the boost with naive T cells recognizing MVA
+  or HIV antigens. For all regimens, the number of MVA boosts was important for
+  increasing both anti-Gag CD8+ T cell and anti-Env Ab responses.
+
+
 ## Relevant Papers and Points to Consider
 
 ### Excerpt from Introduction of flowCore's Vignette
@@ -281,15 +437,32 @@ useful to cite this paper as well as Betts et al. (2006) as mentioned in this
 quote:
 
 > Betts et al. used polychromatic flow cytometry to analyze the simultaneous
-  production of IFN-c, TNF-a, IL-2, MIP-1b, and the degranulation marker CD107a
-  and showed that highly polyfunctional HIV-specific CD81 T cells (i.e., cells
+  production of IFN-g, TNF-a, IL-2, MIP-1b, and the degranulation marker CD107a
+  and showed that highly polyfunctional HIV-specific CD8+ T cells (i.e., cells
   producing four or five functional markers simultaneously) were more frequent
   in HIV long-term nonprogressors than in progressors.
 
 Furthermore, the **polyfunctional** term was coined by Harari et al. (2005). The
 current paper briefly describes why multiple cytokines are considered. We should
 at least pay homage to Harari et al. (2005) when we describe the classification
-study.
+study. Here's a related quote:
+
+> Originally, when intracellular cytokine staining (ICS) technique was first
+  introduced, researchers measured only one function, i.e., IFN-g, as a
+  surrogate marker for any T cell response. IFN-g was thought to be the dominant
+  immune function of the effector T cell response and many candidate vaccines
+  moved to phase I–II because of their capability to induce a strong production
+  of this cytokine. However, simultaneous staining of two cytokines at the same
+  time, e.g., IFN-g and IL-2, revealed that T cell are heterogeneous, as single
+  cytokine-producing cells as well as double producers are present (Harari,
+  2005). The authors coined the word ‘‘polyfunctional’’ as referred to cells
+  that were able to produce both cytokines at the same time. The first
+  assessment of five cytokines simultaneously revealed that both CD4+ and CD8+ T
+  cells were even more heterogeneous and multiple subsets of T cells with
+  different functionality could be identified according to the
+  cytokine-producing potential (De Rosa, 2004). From here the idea to brake-down
+  the immune response by identifying all combinations of cytokine-producing T
+  cells.
 
 Yet another excellent quote that we should somehow incorporate into the
 motivation for OpenCyto:
@@ -454,3 +627,33 @@ Another excellent quote that explains what ICS is:
   which are not measurable on the cell surface. It enables the detection of rare
   antigen-specific cell populations, so that T-cell responses can be quantitated
   without the need for *in vitro* expansion.
+
+### De Rosa et al. (2004)
+
+> We demonstrate in this study for the first time the simultaneous analysis of
+  five cytokines at the single-cell level for Ag-specific T cells. Our results
+  show that T cells are capable of expressing diverse cytokine profiles, and
+  thereby demonstrate that classifying T cells into a small number of
+  cytokine-based functional subsets is probably inadequate to characterize
+  immune responses.
+
+> These results demonstrate that no single functional parameter adequately
+  quantifies responses, and in fact, due to interindividual variability, limited
+  combinations of functional parameters will not be adequate for all
+  individuals. Therefore, optimal measurements of immunogenicity of a vaccine or
+  of immune responses to pathogenesis will require the measurement of multiple
+  distinct functional outcomes.
+
+> The methods introduced in this report provide a novel means for monitoring
+  vaccine-induced immunogenicity and for monitoring T cell responses to
+  infection. In terms of vaccine development, a method for the identification of
+  those T cell responses induced by candidate vaccines that correlate with
+  efficacy will help target the appropriate vaccines for further clinical
+  testing.
+
+> In summary, we found that in the human, T cell responses to immunization are
+  broad and complex, encompassing a far wider spectrum than can be measured
+  solely by the production of a single cytokine. It is evident that sensitive
+  quantification of immune responses requires the coordinate measurement of more
+  than a single response, and that IFN-g is a subdominant effector response in
+  many immunizations.
