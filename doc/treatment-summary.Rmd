@@ -1,0 +1,120 @@
+# HVTN065 Treatment Data
+
+```{r load_data, message=FALSE, echo=FALSE}
+setwd("..")
+library(ProjectTemplate)
+load.project()
+```
+
+## Summaries of Data
+
+This document contains summary information regarding the HVTN065 treatment data.
+
+There are 120 patients:
+
+* 100 patients in treatment group
+* 20 patients in placebo group
+
+This is a snapshot of `data.frame` of treatment data we have.
+
+```{r treatment_head}
+head(treatment.HVTN065)
+```
+
+The columns `viral_vector` and `POX` are the same.
+
+```{r viral_equals_POX}
+with(treatment.HVTN065, all(viral_vector == POX))
+```
+
+The columns `POX` and `Control` are mutually exclusive. That is, the `POX` column indicates the **Treatment** group, while the `Control` column indicates the **Placebo** group.
+
+```{r POX_Control_exclusive}
+with(treatment.HVTN065, all(xor(POX, Control)))
+```
+
+## Treatment Groups
+
+Next, we examine the counts of patients assigned to both dosage groups.
+
+```{r table_dosages}
+with(treatment.HVTN065, table(product1_dose, product2_dose))
+```
+
+There appear to be 4 groups.
+
+1. 20 patient who receive a placebo before and after (these are the **Placebo** patients)
+2. 30 patients who were given a placebo first but then `10^8 TCID50` (**not** placebo patients)
+3. 10 patients who received `0.3 mg` followed by `10^7 TCID50`
+4. 60 patients who received `3 mg` followed by `10^8 TCID50`
+
+To confirm that the 20 placebo patients are as mentioned in point 1:
+
+```{r placebo_patients}
+with(treatment.HVTN065, sum(product1_dose == "0 mg" & product2_dose == "0 TCID50" & Control == 1))
+```
+
+At first, it appears that the 4 groups mentioned above might be designated in the `group` column. However, this is not the case:
+
+```{r table_dosage_group}
+with(treatment.HVTN065, table(product1_dose, product2_dose, group))
+```
+
+Within each group, there are a small number of placebo patients and a larger number of patients receiving a dosage. But if we look at `group` versus `arm`, we see the same story:
+
+```{r group_arm}
+with(treatment.HVTN065, table(group, arm))
+```
+
+Clearly, within the `arm` column, **P** is short for **Placebo**, and **T** is short for **Treatment**.
+
+The following quote on page 611 of Goepfert et al. describes the dosages by group. Below, the excerpt is separated by the individual groups:
+
+### Group 1
+
+> The study was designed with 10 participants receiving .3 mg of the JS7 (D) and 107 tissue culture infective doses (TCID50) of MVA62 (1/10th dose [M]) at 8-week intervals in the DDMM schedule.
+
+### Group 2
+
+> After a safety review of the 1/10th-dose DNA vaccinations, 30 participants were randomized to receive full doses of the vaccines (3 mg and 108 TCID50, respectively) in the DDMM sequence.
+
+### Group 3
+
+> Once the full-dose DDMM regimen was demonstrated to be adequately safe and immunogenic, part B of the trial was started. This included the enrollment of 30 participants to receive full-dose vaccines in the DMM... 
+
+### Group 4
+
+> ...or MMM sequences with immunizations administered at 0, 8, and 24 weeks.
+
+### Placebo Randomization
+
+> The placebo product used for all groups was saline, and placebo participants were enrolled at a ratio of placebo recipients to vaccines of 1:5.
+
+Below, a screenshot of Figure 1B in Goepfert et al. summarizes the above excerpts and confirms the group numbers above.
+
+![Figure 1B in Goepfert et al.](http://i.imgur.com/GRS5EAg.png)
+
+Now that the group dosage information is understood, we should have an easier time incorporating the information into predicting T-cell and antibody response.
+
+## Miscellaneous Information
+
+The following columns can be safely removed because they either are redundant or offer no information:
+
+* `protocol`
+* `grp`
+* `rx_code`
+* `rx_flag`
+* `rx_flag_com`
+* `route`
+
+The two group columns, `group` and `grp`, both provide the same information:
+
+```{r group_grp}
+with(treatment.HVTN065, table(group, grp))
+```
+
+The `rx_code` column is a bit redundant...
+
+```{r rx_code}
+with(treatment.HVTN065, table(arm, rx_code))
+```
