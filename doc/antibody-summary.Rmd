@@ -1,0 +1,210 @@
+# HVTN065 Neutralizing Antibody Data
+
+```{r load_data, message=FALSE, echo=FALSE}
+setwd("..")
+library(ProjectTemplate)
+load.project()
+```
+
+Below, we summarize two antibody data sets. Currently, the importance of each data set and the difference between the two are unclear. Also, we need to answer the following two questions:
+
+* **TODO**: WTF is E in E065?
+* **TODO**: WTF is S in S065?
+
+## E065 Antibody Data
+
+```{r head_e065}
+head(neutralizing.antibody.e065)
+```
+
+Antibody data are collected at visit 12 only.
+
+```{r visitno_e065}
+table(neutralizing.antibody.e065$visitno)
+```
+
+
+Column Names and Meanings:
+
+* `prot` = Protocol
+* `labid` = Duke University (DU)
+* `assay` = Neutralizing Antibodies (NAB)
+* `isolate` = Type of HIV-1: either ADA, MN, or B-pGA2JS7
+    * ADA and MN are described first full paragraph of p. 613 of Goepfert et al
+    * B-pGA2JS7 must refer to the pGA2/JS7 vaccine, which is described under *Vaccines* on p. 611
+    
+There are 113 unique PTIDs in ths data set. Each of them has 2 replicates:
+
+```{r ptid_summary_e065}
+nlevels(neutralizing.antibody.e065$ptid)
+table(table(neutralizing.antibody.e065$ptid))
+```
+
+From these data alone, it is difficult to determine the significance of the `assayid` column. Perhaps it relates to the type of treatment given.
+
+```{r e065_assayid}
+table(neutralizing.antibody.e065$assayid)
+```
+
+
+There's a discrepancy in the `positivity_method` column. Goepfert et al. state:
+
+> HIV neutralization was measured as a reduction in luciferase reporter gene expression after a single round of infection in TZM-bl cells [19]. Neutralization titers were defined as the dilution at which relative luminescence units were reduced by 50% compared with virus control wells after subtraction of background. An assay stock of HIV-1 MN was produced in H9 cells, and a stock of molecularly cloned ADA Env-pseudotyped virus was produced by transfection in 293T cells. Samples were considered positive if the neutralization titer that reduced cell killing by 50% was >25.
+
+Yet, we can see that the `positivity_method` states `>=10`
+
+### Antibody Response by `isolate` Group
+
+Notice that the `MN` group is the only `isolate` that has a near balance on antibody response.
+
+```{r e065_antibody_isolate, results='asis'}
+print(xtable(with(neutralizing.antibody.e065, table(isolate, response))), type = "html")
+```
+
+Another way of looking at this is a stacked histogram.
+
+```{r plot_antibody_e}
+ggplot(neutralizing.antibody.e065, aes(x = log_titer, fill = isolate)) + geom_histogram()
+```
+
+### Miscellaneous Information
+
+A filter flag is set for 6 entries.
+
+```{r e065_filterflag}
+table(neutralizing.antibody.e065$filt_flag, useNA = "ifany")
+```
+
+There are 6 entries that contain the following `reason`: **Out of Window**
+
+```{r e065_reason}
+table(neutralizing.antibody.e065$reason)
+```
+
+The `reason` is indicating why the 6 entries were filtered:
+
+```{r e065_filter_reason}
+nrow(subset(neutralizing.antibody.e065, reason != "" & !is.na(filt_flag)))
+```
+
+The cell type is `TZM-bl` for all entries:
+
+```{r e065_celltype}
+table(neutralizing.antibody.e065$celltype)
+```
+
+The following columns can be safely removed because they either are redundant or offer no information:
+
+* `prot`
+* `srcds`
+* `labid`
+* `assay`
+* `assaytyp`
+* `poscrit`
+* `cutoff`
+* `max_cutoff`
+
+## S065 Antibody Data
+
+```{r head_s065}
+head(neutralizing.antibody.s065)
+```
+
+Antibody data are collected at visit 12 only.
+
+```{r visitno_s065}
+table(neutralizing.antibody.s065$visitno)
+```
+
+There are 113 unique PTIDs in ths data set. The majority of them have either 24 or 32 replicates.
+
+```{r ptid_summary_s065}
+nlevels(neutralizing.antibody.s065$ptid)
+table(table(neutralizing.antibody.s065$ptid))
+```
+
+As above, it is difficult to determine the significance of the `assayid` column.
+
+```{r s065_assayid}
+table(neutralizing.antibody.s065$assayid)
+```
+
+### Antibody Response by `isolate` Group
+
+For S065, there are several `isolate` groups
+
+```{r s065_antibody_isolate, results='asis'}
+print(xtable(with(neutralizing.antibody.s065, table(isolate, response))), type = "html")
+```
+
+Another way of looking at this is a stacked histogram.
+
+```{r plot_antibody_s065}
+ggplot(neutralizing.antibody.s065, aes(x = log_titer, fill = isolate)) + geom_histogram()
+```
+
+This plot is busy and not entirely clear. Here's an alternative plot summarizing the `response` by `isolate`:
+
+```{r respone_isolate_s065}
+neutralizing.antibody.s065$response <- factor(neutralizing.antibody.s065$response)
+p <- ggplot(neutralizing.antibody.s065, aes(x = isolate, fill = response))
+p + geom_bar(position="dodge") + theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 12))
+```
+
+### Miscellaneous Information
+
+A filter flag is set for 88 entries.
+
+```{r s065_filterflag}
+table(neutralizing.antibody.s065$filt_flag, useNA = "ifany")
+```
+
+There are 88 entries that contain the following `reason`: **Out of Window**
+
+```{r s065_reason}
+table(neutralizing.antibody.s065$reason)
+```
+
+The `reason` is indicating why the 88 entries were filtered:
+
+```{r s065_filter_reason}
+nrow(subset(neutralizing.antibody.s065, reason != "" & !is.na(filt_flag)))
+```
+
+These 88 entries are also labeled with visit number `12.1`:
+
+```{r so65_filter_visitno}
+nrow(subset(neutralizing.antibody.s065, visitno == 12.1 & !is.na(filt_flag)))
+```
+
+
+
+
+Cell types are either `A3R5.7` or `TZM-bl`. I am unsure what type of cells `A3R5.7` references from the paper.
+
+```{r s065_celltype}
+table(neutralizing.antibody.s065$celltype)
+```
+
+There are 3 different assay types:
+
+```{r s065_assaytyp}
+table(neutralizing.antibody.s065$assaytyp)
+```
+
+There are 2 types of `poscrit`:
+
+```{r so65_poscrit}
+table(neutralizing.antibody.s065$poscrit)
+```
+This likely is related to positivity calls, but what does `crit` mean here?
+
+
+The following columns can be safely removed because they either are redundant or offer no information:
+
+* `prot`
+* `srcds`
+* `labid`
+* `assay`
+* `cutoff`
+* `max_cutoff`
