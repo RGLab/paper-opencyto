@@ -1,0 +1,101 @@
+# HVTN065 ELISPOT Data
+
+```{r load_data, message=FALSE, echo=FALSE}
+setwd("..")
+library(ProjectTemplate)
+load.project()
+elispot065$response <- factor(elispot065$response)
+elispot065$visitno <- factor(elispot065$visitno)
+```
+
+## Summaries of Data
+
+This document contains summary information regarding the HVTN065 ELISPOT data.
+
+**NOTE**: Although the original filename includes **elispot**, there is no mention within Goepfert et al. (2011) of the **ELISPOT** technology. Instead, there are several mentions of **ELISA**. From the [ELISPOT Wikipedia page](http://en.wikipedia.org/wiki/ELISPOT), **ELISPOT** is a modified **ELISA** immunoassay.
+
+This is a snapshot of `data.frame` of treatment data we have.
+
+```{r elispot_head}
+head(elispot065)
+```
+
+There are 364 records for 120 patients.
+
+```{r totals}
+nlevels(elispot065$ptid)
+table(elispot065$visitno)
+```
+
+The visits are imbalanced though.
+
+```{r ptid_visits}
+with(elispot065, apply(table(ptid, visitno), 2, table))
+```
+
+There are two `antigen` factors: `P55` and `PS-gp120 LAV`. Here, we crosstabulate the two `antigen` columns by the two visit numbers.
+
+```{r antigen_visitno}
+with(elispot065, table(antigen, visitno))
+```
+
+
+## Positivity Calls
+
+Each row has the same criterion for positivity calls:
+
+```{r positivity_criterion}
+levels(elispot065$poscrit)
+```
+
+The positivity threshold for `delta` is 0.2. Here, we plot densities of `delta` for each visit. We also add a vertical black line at 0.2 for the positivity threshold.
+
+```{r delta_visitno}
+ggplot(elispot065, aes(x = delta, color = visitno)) + geom_density() + geom_vline(xintercept = 0.2)
+```
+
+From the above plot, it is clear that there are more positivity responses for visit 12 than visit 2. The following plot and table confirm it.
+
+```{r visitno_response}
+ggplot(elispot065, aes(x = response, fill = visitno)) + geom_bar(position = "dodge")
+with(elispot065, table(visitno, response))
+```
+
+Above, we briefly examined `visitno` by `antigen`. Here, we present the same information as above twice with two different facets.
+
+```{r response_antigen}
+p <- ggplot(elispot065, aes(x = response, fill = visitno))
+p + geom_bar(position = "dodge") + facet_wrap(~ antigen)
+
+p2 <- ggplot(elispot065, aes(x = response, fill = antigen))
+p2 + geom_bar(position = "dodge") + facet_wrap(~ visitno)
+
+```
+
+
+Above, we can see that some values of `response` are `NA`. It turns out that these are from the rows that are to be filtered:
+
+```{r response_na}
+subset(elispot065, is.na(response))
+```
+
+## Miscellaneous Information
+
+A filter flag is set for 3 entries.
+
+```{r filterflag}
+table(elispot065$filt_flag, useNA = "ifany")
+```
+
+There are 3 entries that contain the following `reason`: **Out of Window**
+
+```{r reason}
+table(elispot065$reason)
+```
+
+
+The following columns can be safely removed because they either are redundant or offer no information:
+
+* `prot`
+* `srcds`
+* `labid`
