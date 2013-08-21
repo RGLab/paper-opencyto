@@ -3,6 +3,6 @@ cache_loading: on
 munging: off
 logging: off
 load_libraries: on
-libraries: reshape2, plyr, ggplot2, stringr, lubridate, xtable, glmnet, parallel, gtools, data.table, MASS, pracma, MIMOSA, covTest
+libraries: reshape2, plyr, ggplot2, stringr, lubridate, xtable, glmnet, parallel, gtools, data.table, MASS, pracma, MIMOSA, covTest, RSQLite
 as_factors: on
 data_tables: off
