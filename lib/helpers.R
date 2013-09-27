@@ -703,7 +703,7 @@ ROC_summary <- function(results, tolerances) {
   # classification probabilties for visits 2 and 12 and then order by the
   # differences.
   summary <- ddply(probs, .(Tolerance, PTID), summarize,
-                       delta = 1 - abs(diff(Probability[VISITNO %in% c("2", "12")])),
+                       delta = 1 - max(Probability[VISITNO %in% c("2", "12")]),
                        Truth = unique(Truth))
   summary <- summary[with(summary, order(Tolerance, delta, Truth, decreasing = FALSE)), ]
 
@@ -749,4 +749,140 @@ ROC_summary_manual <- function(results) {
   # the rank of the differences in classification probabilities.
   summarize(summary, FPR = cumsum(Truth == "Placebo") / sum(Truth == "Placebo"),
             TPR = cumsum(Truth == "Treatment") / sum(Truth == "Treatment"))
+}
+
+
+
+prepare_antibody <- function(popstats, antibody_data, treatment_info, pdata,
+                             isolate = "MN", stimulation = "GAG-1-PTEG", train_pct = 0.6) {
+  m_popstats <- reshape2:::melt(popstats)
+  colnames(m_popstats) <- c("Marker", "Sample", "Value")
+  m_popstats$Marker <- as.character(m_popstats$Marker)
+  m_popstats$Sample <- as.character(m_popstats$Sample)
+  
+  m_popstats <- plyr:::join(m_popstats, pData_HVTN065, by = "Sample")
+  m_popstats$VISITNO <- factor(m_popstats$VISITNO)
+  m_popstats$PTID <- factor(m_popstats$PTID)
+  
+  m_popstats$Stimulation <- as.character(m_popstats$Stimulation)
+  m_popstats$Stimulation <- replace(m_popstats$Stimulation,
+                                    grep("^negctrl", m_popstats$Stimulation), "negctrl")
+  
+  m_popstats <- subset(m_popstats, Stimulation %in% c("negctrl", stimulation))
+  m_popstats$Stimulation <- factor(m_popstats$Stimulation, labels = c(stimulation, "negctrl"))
+  
+  m_popstats <- ddply(m_popstats, .(PTID, VISITNO, Stimulation, Marker),
+                      summarize, Value = mean(Value))
+  
+  m_popstats <- ddply(m_popstats, .(PTID, VISITNO, Marker), summarize,
+                      diff_Value = mean(Value))
+  
+  m_popstats <- ddply(m_popstats, .(PTID, Marker), summarize,
+                      diff_Value = diff(diff_Value))
+  
+  antibody_data <- subset(antibody_data, Isolate == isolate, select = -Isolate)
+  m_popstats <- merge(m_popstats, antibody_data, sort = FALSE)
+  m_popstats <- dcast(m_popstats, PTID + Response ~ Marker, value.var = "diff_Value")
+  m_popstats <- merge(m_popstats, treatment_info, sort = FALSE)
+  m_popstats$PTID <- as.character(m_popstats$PTID)
+  
+  placebo_data <- subset(m_popstats, Treatment == "Placebo", select = -c(PTID, Treatment))
+  treatment_data <- subset(m_popstats, Treatment == "Treatment", select = -c(PTID, Treatment))
+  
+  which_training <- sample.int(nrow(treatment_data), train_pct * nrow(treatment_data))
+  train_data <- treatment_data[which_training, ]
+  test_data <- treatment_data[-which_training, ]
+  
+  list(train_data = train_data, test_data = test_data, placebo_data = placebo_data)
+}
+
+antibody_classification_summary <- function(popstats, antibody_data, treatment_info, pdata,
+                                            isolate = "MN", stimulation = "GAG-1-PTEG",
+                                            train_pct = 0.6, prob_threshold = 0.5, ...) {
+  
+  classif_data <- prepare_antibody(popstats = popstats, antibody_data = antibody_data,
+                                   treatment_info = treatment_info, pdata = pdata,
+                                   isolate = isolate, stimulation = stimulation,
+                                   train_pct = train_pct)
+  
+  train_data <- classif_data$train_data
+  test_data <- classif_data$test_data
+  placebo_data <- classif_data$placebo_data
+  
+  train_x <- as.matrix(subset(train_data, select = -Response))
+  train_y <- factor(train_data$Response)
+  
+  test_x <- as.matrix(subset(test_data, select = -Response))
+  test_y <- factor(test_data$Response)
+  
+  placebo_x <- as.matrix(subset(placebo_data, select = -Response))
+  placebo_y <- factor(placebo_data$Response)
+  
+  # Trains the 'glmnet' classifier using cross-validation.
+  glmnet_cv <- cv.glmnet(x = train_x, y = train_y, family = "binomial", ...)
+  glmnet_fit <- glmnet(x = train_x, y = train_y, family = "binomial", ...)
+  
+  # Computes classification accuracies in two different ways. If the visits are
+  # paired by patient, then we compute the proportion of correctly classified
+  # patients. Otherwise, we calculate the proportion of visits that are correctly
+  # classified.
+  predictions_treated <- as.vector(predict(glmnet_cv, test_x, s = "lambda.min",
+                                           type = "response"))
+  predictions_placebo <- as.vector(predict(glmnet_cv, placebo_x,
+                                           s = "lambda.min", type = "response"))
+  
+  # If the difference in classification probabilities exceeds the probability
+  # threshold, we assign the first sample as visit 2 and the second as visit 12.
+  # Otherwise, we assign the first sample as visit 12 and the second as visit 2.
+  correct_patients <- as.integer(predictions_treated > prob_threshold) == test_y
+  correct_placebo <- as.integer(predictions_placebo > prob_threshold) == placebo_y
+  
+  accuracy_treated <- mean(correct_patients)
+  accuracy_placebo <- mean(correct_placebo)
+  
+  # We return the classification accuracies, the classification probabilities and
+  # markers kept using 'glmnet', the corresponding test data sets for further
+  # analysis (e.g., ROC curves), and the markers kept by 'glmnet'.
+  list(accuracy = list(treatment = accuracy_treated, placebo = accuracy_placebo),
+       classification_probs = list(treated = predictions_treated,
+                                   placebo = predictions_placebo),
+       train_data = train_data, test_data = list(treated = test_data, placebo = placebo_data))
+}
+
+
+ROC_antibody_summary <- function(results, tolerances) {
+  probs <- lapply(tolerances, function(tol) {
+    data.frame(Tolerance = tol,
+               Truth = results[[tol]]$test_data$treated$Response,
+               Probability = results[[tol]]$classification_probs$treated)
+  })
+  
+  require(ROCR)
+  pred <- with(probs[[3]], prediction(Probability, Truth))
+  perf <- performance(pred, measure = "tpr", x.measure = "fpr") 
+  plot(perf, main = "Tolerance = 1e-3")
+  
+  pred <- with(probs[[4]], prediction(Probability, Truth))
+  perf <- performance(pred, measure = "tpr", x.measure = "fpr") 
+  plot(perf, main = "Tolerance = 1e-4")
+  
+  probs <- do.call(rbind, probs)
+  
+  # For each PTID, we compute the absolute value of the difference in
+  # classification probabilties for visits 2 and 12 and then order by the
+  # differences.
+  summary <- ddply(probs, .(Tolerance), summarize,
+                   delta = 1 - Probability,
+                   Truth = Truth)
+  summary <- summary[with(summary, order(Tolerance, delta, Truth, decreasing = FALSE)), ]
+  
+  # Calculates true and false positive rates based on Treatment and Placebo
+  # samples, respectively. Because we are using Treatments and Placebos, we
+  # calculate TPRs and FPRs differently than usual. The basic idea is that when we
+  # add to the TPR each time we classify a patient as Treatment and to the FPR
+  # each time we classify a patient as Placebo. The ordering here is determined by
+  # the rank of the differences in classification probabilities.
+  ddply(summary, .(Tolerance), summarize,
+        FPR = cumsum(Truth == "Placebo") / sum(Truth == "Placebo"),
+        TPR = cumsum(Truth == "Treatment") / sum(Truth == "Treatment"))
 }

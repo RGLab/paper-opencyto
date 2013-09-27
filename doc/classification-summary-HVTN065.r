@@ -245,6 +245,98 @@ print(xtable(ENV_markers), include.rownames = FALSE, type = "html")
 print(xtable(POL_markers), include.rownames = FALSE, type = "html")
 
 
+
+#' ## Antibody Classification
+
+#+ antibody_GAG
+set.seed(42)
+antibody_data <- subset(neutralizing.antibody.e065, select = c(ptid, isolate, response))
+colnames(antibody_data) <- c("PTID", "Isolate", "Response")
+antibody_data$PTID <- gsub("-", "", antibody_data$PTID)
+
+GAG_antibody_results <- lapply(popstats_polyfunc, antibody_classification_summary,
+                               antibody_data = antibody_data, treatment_info = treatment_info,
+                               pdata = pData_HVTN065, isolate = "MN", stimulation = "GAG-1-PTEG",
+                               alpha = 0.5)
+
+ENV_antibody_results <- lapply(popstats_polyfunc, antibody_classification_summary,
+                               antibody_data = antibody_data, treatment_info = treatment_info,
+                               pdata = pData_HVTN065, isolate = "MN", stimulation = "ENV-1-PTEG",
+                               alpha = 0.5)
+
+POL_antibody_results <- lapply(popstats_polyfunc, antibody_classification_summary,
+                               antibody_data = antibody_data, treatment_info = treatment_info,
+                               pdata = pData_HVTN065, isolate = "MN", stimulation = "POL-1-PTEG",
+                               alpha = 0.5)
+
+
+# Constructs a ggplot2-friendly results data frame
+GAG_accuracy <- melt(lapply(GAG_antibody_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+ENV_accuracy <- melt(lapply(ENV_antibody_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+POL_accuracy <- melt(lapply(POL_antibody_results, function(x) rbind(unlist(x$accuracy))))[, -1]
+
+accuracy_results <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_accuracy),
+                          cbind(Stimulation = "ENV-1-PTEG", ENV_accuracy),
+                          cbind(Stimulation = "POL-1-PTEG", POL_accuracy))
+colnames(accuracy_results) <- c("Stimulation", "Treatment", "Accuracy", "Tolerance")
+
+
+#' ### Results
+
+# + antibody_classification_figure, results='asis'
+p <- ggplot(accuracy_results, aes(x = Stimulation, fill = Treatment))
+p <- p + geom_bar(aes(weight = Accuracy), position = "dodge")
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + ylim(0, 1) + xlab("Stimulation Group") + ylab("Classification Accuracy")
+p <- p + ggtitle("Classification Accuracy of Antibody Responses")
+p <- p + theme_bw() + theme(plot.title = element_text(size = 18))
+p <- p + theme(strip.text.y = element_text(size = 14))
+p <- p + theme(axis.text = element_text(size = 10))
+p + theme(axis.title = element_text(size = 16))
+
+#' Next, we calculate ROC curves assuming all vaccinees are true positive and
+#' the placebos are false positive.
+#' For each PTID, we compute the absolute value of the difference in
+#' classification probabilties for visits 2 and 12 and then order by the
+#' differences.
+
+#+ antibody_ROC
+# Summarizes the classification probabilties for GAG and ENV.
+debug(ROC_antibody_summary)
+GAG_ROC <- ROC_antibody_summary(GAG_antibody_results, cytokine_tolerances)
+ENV_ROC <- ROC_antibody_summary(ENV_antibody_results, cytokine_tolerances)
+POL_ROC <- ROC_antibody_summary(POL_antibody_results, cytokine_tolerances)
+
+# Estimates ROC curves for GAG and ENV
+ROC_curves <- rbind(cbind(Stimulation = "GAG-1-PTEG", GAG_ROC),
+                    cbind(Stimulation = "ENV-1-PTEG", ENV_ROC),
+                    cbind(Stimulation = "POL-1-PTEG", POL_ROC))
+
+#+ antibody_ROC_figure, results='asis'
+
+# The 'pracma:::trapz' function numerically integrates via the trapezoid method
+AUC_df <- ddply(ROC_curves, .(Stimulation, Tolerance), summarize,
+                AUC = trapz(FPR, TPR))
+AUC_df$AUC <- paste("AUC:", round(AUC_df$AUC, 3))
+AUC_df$x <- 0.75
+AUC_df$y <- rep(c(0.55, 0.5, 0.45), each = length(cytokine_tolerances))
+
+# Creates a single plot containing ROC curves for both stimulation groups.
+# Also, displays AUC's as text on plot.
+p <- ggplot(ROC_curves, aes(x = FPR, y = TPR))
+p <- p + geom_line(aes(color = Stimulation), size = 1.5)
+p <- p + facet_grid(. ~ Tolerance, labeller = label_both)
+p <- p + geom_text(data = AUC_df, aes(label = AUC, x = x, y = y, color = Stimulation))
+p <- p + theme_bw() + ggtitle("ROC Curves by Stimulation Group")
+p + xlab("FPR (Placebo)") + ylab("TPR (Vaccinated)")
+
+
+
+
+
+
+
+
 ### LASSO
 
 #' Next, we repeat the classification study using LASSO rather than elastic net.
